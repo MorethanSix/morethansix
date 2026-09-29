@@ -211,3 +211,32 @@
   window.addEventListener('resize', scheduleBar);
   drawBar();
 })();
+
+(() => {
+  'use strict';
+  // 2026-09-30: 「相談を申し込む」を押すとメールアドレスの札が開く。JSなしでは札は最初から見えている。
+  const box = document.getElementById('contact-mail');
+  const cta = document.querySelector('.contact-cta');
+  if (!box || !cta) return;
+  const addr = box.querySelector('.contact-mail__addr');
+  const copy = box.querySelector('.contact-mail__copy');
+  const done = box.querySelector('.contact-mail__done');
+  box.classList.add('is-folded');
+  cta.setAttribute('aria-expanded', 'false');
+  cta.addEventListener('click', e => {
+    e.preventDefault();
+    box.classList.remove('is-folded');
+    box.classList.add('is-open');
+    cta.setAttribute('aria-expanded', 'true');
+    box.focus({ preventScroll: true });
+    box.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('motion-paused') ? 'auto' : 'smooth', block: 'center' });
+  });
+  if (copy && addr && navigator.clipboard) {
+    copy.hidden = false;
+    copy.addEventListener('click', () => {
+      navigator.clipboard.writeText(addr.textContent.trim())
+        .then(() => { done.textContent = 'コピーしました'; })
+        .catch(() => { done.textContent = 'コピーできませんでした。アドレスを選んでコピーしてください'; });
+    });
+  }
+})();
