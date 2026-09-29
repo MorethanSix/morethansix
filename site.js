@@ -20,7 +20,7 @@
   const samples = { 'opening-start': 0, 'opening-middle': .43, 'opening-end': 1 };
   const query = new URLSearchParams(location.search);
   const sampleName = query.get('frame');
-  const hasSample = Object.hasOwn(samples, sampleName);
+  const hasSample = false; // 公開版では撮影用の固定表示を使わない
   const stopped = () => paused || reduced.matches;
   const headerHeight = () => header.getBoundingClientRect().height;
   const progress = () => {
