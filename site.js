@@ -69,7 +69,7 @@
   let position = 0;
   let offset = 0;
   let lastY = window.scrollY;
-  let refreshReel = () => {};
+  const refreshProof = () => document.dispatchEvent(new Event('mts:motionchange'));
   let renderedTime = 0;
   let filmReady = false;
   let filmLoading = false;
@@ -241,12 +241,24 @@
     const willMove = !stopped();
     // ページ内リンクの上余白に残る前章の端を、閲覧中の章と誤認しない。
     const inHero = !wasMoving || progress() < 1;
-    const anchor = [...document.querySelectorAll('main > section')].find(section => (inHero || section !== opening) && section.getBoundingClientRect().bottom > headerHeight() + 32);
-    const anchorTop = anchor?.getBoundingClientRect().top;
+    let anchor = [...document.querySelectorAll('main > section')].find(section => (inHero || section !== opening) && section.getBoundingClientRect().bottom > headerHeight() + 32);
+    let anchorTop = anchor?.getBoundingClientRect().top;
+    if (anchor?.classList.contains('proof-orbit')) {
+      const journey = anchor.querySelector('.orbit-journey');
+      if (journey.getBoundingClientRect().bottom > headerHeight() + 32) {
+        // 輪の途中で停止/再開したら、10枚を読める列の入口へ合わせる。
+        anchor = journey;
+        anchorTop = headerHeight();
+      } else {
+        // 事実欄を読んでいる場合は、その文章の画面位置を保つ。
+        anchor = anchor.querySelector('.orbit-intro');
+        anchorTop = anchor.getBoundingClientRect().top;
+      }
+    }
     if (!stopped()) enableCinema();
     root.classList.toggle('motion-paused', stopped());
     // 映像の準備完了・停止・端末設定変更のすべてで、後続の帯も新しい寸法へ合わせる。
-    refreshReel();
+    refreshProof();
     if (wasMoving !== willMove && anchor) {
       if (wasMoving && anchor === opening) {
         window.scrollTo({ top: position < .5 ? 0 : Math.max(0, consultation.offsetTop - headerHeight()), behavior: 'instant' });
@@ -369,31 +381,7 @@
     stages.forEach(stage => stage.classList.add('is-in'));
   }
 
-  // v16: 連作画の帯。縦スクロールの進み具合(0-1)を --reel に書き、CSS が横移動に変換する（.cinematic かつ停止中でない時だけ）。
-  const reelWrap = document.querySelector('.proof__reel-wrap');
-  const reel = reelWrap && reelWrap.querySelector('.proof__reel');
-  const track = reel && reel.querySelector('.proof__track');
-  if (reelWrap && reel && track) {
-    const narrow = window.matchMedia('(max-width:760px)');
-    let reelMax = 0;
-    const measure = () => {
-      reelMax = Math.max(0, track.scrollWidth - reel.clientWidth);
-      reelWrap.style.setProperty('--reel-max', reelMax + 'px'); reelWrap.style.setProperty('--reel-h', reel.offsetHeight + 'px');
-    };
-    const tick = () => {
-      if (!cinematic || stopped() || narrow.matches) return;
-      if (reel.scrollLeft) reel.scrollLeft = 0; // 静的モードの横スクロール位置が残らないように
-      const wrapRect = reelWrap.getBoundingClientRect(); const reelRect = reel.getBoundingClientRect();
-      const total = reelWrap.offsetHeight - reel.offsetHeight; // 帯が固定されたまま進む縦の距離
-      const p = total > 0 ? Math.min(1, Math.max(0, (reelRect.top - wrapRect.top) / total)) : 0;
-      reelWrap.style.setProperty('--reel', p.toFixed(4));
-    };
-    refreshReel = () => { measure(); tick(); };
-    refreshReel();
-    window.addEventListener('scroll', tick, { passive: true });
-    window.addEventListener('resize', () => { measure(); tick(); });
-    window.addEventListener('load', () => { measure(); tick(); });
-  }
+
 })();
 
 (() => {
