@@ -87,6 +87,8 @@
   font-size: 11px;
   letter-spacing: .2em;
 }
+.opening-screen-card .screen-kicker,
+.opening-screen-card .screen-with { white-space: nowrap; }
 .opening-screen-card strong {
   top: 169px;
   left: 65px;
@@ -100,6 +102,13 @@
   left: 65px;
   font-size: 19px;
   line-height: 2.1;
+}
+.opening-preview .screen-photo {
+  position: absolute;
+  z-index: 1;
+  max-width: none;
+  object-fit: cover;
+  opacity: var(--screen-photo-ink, 0);
 }
 
 .cinematic .opening { height: calc(100svh - var(--head) + (150svh + var(--head)) * var(--travel-share, 1)); }

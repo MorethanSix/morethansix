@@ -18,6 +18,12 @@
   const filmContext = filmSurface.getContext('2d', { alpha: false });
   const preview = document.querySelector('.opening-preview');
   const consultation = document.querySelector('main > .consultation');
+  const consultPhoto = consultation.querySelector('.consult-photo img');
+  const screenPhoto = consultPhoto.cloneNode(false);
+  screenPhoto.className = 'screen-photo';
+  screenPhoto.alt = '';
+  screenPhoto.loading = 'eager';
+  preview.appendChild(screenPhoto);
   const header = document.querySelector('.header');
   const button = document.querySelector('.motion');
   const label = document.querySelector('[data-motion-label]');
@@ -26,19 +32,13 @@
   const ramp = (value, start, end) => clamp((value - start) / (end - start));
   const ease = value => value * value * (3 - 2 * value);
   const lerp = (from, to, amount) => from + (to - from) * amount;
-  // ロゴが鮮明になってから消えるまでだけ0.5倍速。その後の本文への接近は1倍速。
+  // 接近全体に十分なスクロール距離を取り、後半だけ加速させない。
   const introShare = .36;
-  const logoSpeed = .5;
+  const cameraSpeed = .25;
   const cameraStart = .08;
   const cameraEnd = .82;
   const logoFadeEnd = 2.8;
-  // easeの逆関数で、ロゴが消える映像コマをスクロールの速度境界へ合わせる。
-  const inverseEase = value => .5 - Math.sin(Math.asin(1 - 2 * clamp(value)) / 3);
-  const logoEnd = introShare + (1 - introShare) * lerp(cameraStart, cameraEnd, inverseEase(logoFadeEnd / 4));
-  const logoDistance = (logoEnd - introShare) / logoSpeed;
-  const recoveryDistance = .08;
-  const recoveryLoss = (1 - logoSpeed) * recoveryDistance / 2;
-  const travelShare = introShare + logoDistance + (1 - logoEnd) + recoveryLoss;
+  const travelShare = introShare + (1 - introShare) / cameraSpeed;
   opening.style.setProperty('--travel-share', String(travelShare));
   // 24fpsの元動画から画面内側を9コマで計測。中間フレームは滑らかに補間する。
   const screenTrack = [
@@ -54,14 +54,13 @@
   ];
   const portalSize = { width: 1000 };
   const portalText = [
-    ['.screen-kicker', '.section-top .eyebrow', 65, 78, 15],
-    ['.screen-with', '.section-top > span', 865, 78, 11],
-    ['strong', '.consult-heading h2', 65, 169, 58],
-    ['.screen-detail', '.consult-heading > p', 65, 350, 19],
-  ].map(([screenSelector, realSelector, x, y, size]) => ({
+    ['.screen-kicker', '.section-top .eyebrow'],
+    ['.screen-with', '.section-top > span'],
+    ['strong', '.consult-heading h2'],
+    ['.screen-detail', '.consult-heading > p'],
+  ].map(([screenSelector, realSelector]) => ({
     screen: preview.querySelector(screenSelector),
     real: consultation.querySelector(realSelector),
-    x, y, size,
   }));
   let paused = false;
   let heroDeferred = false;
@@ -89,15 +88,8 @@
     const box = opening.getBoundingClientRect();
     const distance = clamp((headerHeight() - box.top) / Math.max(1, box.height - window.innerHeight + headerHeight())) * travelShare;
     if (distance <= introShare) return distance;
-    if (distance <= introShare + logoDistance) return introShare + (distance - introShare) * logoSpeed;
-    const afterLogo = distance - introShare - logoDistance;
-    if (afterLogo < recoveryDistance) {
-      const u = afterLogo / recoveryDistance;
-      // 速度のeaseを積分し、位置も速度も連続のまま0.5倍から1倍へ戻す。
-      return logoEnd + logoSpeed * afterLogo
-        + (1 - logoSpeed) * recoveryDistance * (u ** 3 - u ** 4 / 2);
-    }
-    return clamp(logoEnd + afterLogo - recoveryLoss);
+    if (distance >= travelShare) return 1;
+    return clamp(introShare + (distance - introShare) * cameraSpeed);
   };
   const screenAt = time => {
     const index = Math.max(0, screenTrack.findIndex((point, i) => i === screenTrack.length - 1 || time <= screenTrack[i + 1].time));
@@ -127,8 +119,8 @@
     position = hasSample ? samples[sampleName] : clamp(progress() + offset);
     const roomExpansion = ease(ramp(position, .02, .25));
     const zoomProgress = ramp(position, introShare, 1);
-    // ロゴの見せ場では表示面を無地に保ち、その後だけ実写のカメラ移動をスクロールへ同期する。
-    const targetTime = 4 * ease(ramp(zoomProgress, cameraStart, cameraEnd));
+    // 元動画の時間を均等に進める。スクロール量が同じなら接近する秒数も同じ。
+    const targetTime = 4 * ramp(zoomProgress, cameraStart, cameraEnd);
     if (video.readyState >= 2 && Math.abs(video.currentTime - targetTime) > 1 / 60) {
       video.currentTime = targetTime;
     }
@@ -142,15 +134,13 @@
     const height = stageBox.height;
     // 固定演出中の次章はまだ画面下にあるため、受け渡し時の位置を基準にする。
     const remainingTravel = Math.max(0, consultation.getBoundingClientRect().top - stageBox.top);
-    const textTargets = portalText.map(({ real }) => ({
-      box: real.getBoundingClientRect(),
-      size: Number.parseFloat(getComputedStyle(real).fontSize),
-    }));
-    const textLeft = textTargets[0].box.left;
-    const textRight = textTargets[1].box.right;
+    const textTargets = portalText.map(({ real }) => {
+      const style = getComputedStyle(real);
+      return {box:real.getBoundingClientRect(),size:parseFloat(style.fontSize),line:parseFloat(style.lineHeight),spacing:parseFloat(style.letterSpacing)||0};
+    });
+    const photoBox = consultPhoto.getBoundingClientRect();
+    const photoCorners = getComputedStyle(consultPhoto.parentElement).borderRadius.split(' ').map(parseFloat);
     const narrow = window.matchMedia('(max-width: 760px)').matches;
-    // 文字が過大になってから急に縮まないよう、接近の後半から実ページの組版へ連続的に寄せる。
-    const textLayout = ease(ramp(zoomProgress, narrow ? .53 : .50, narrow ? .78 : .88));
     const roomLeft = width * (narrow ? .24 : .54) * (1 - roomExpansion);
     const roomTop = height * (narrow ? .47 : .08) * (1 - roomExpansion);
     const roomWidth = width * lerp(narrow ? .76 : .43, 1, roomExpansion);
@@ -162,13 +152,20 @@
     const videoLeft = -(1280 * videoScale - roomWidth) * filmX;
     const videoTop = (roomHeight - 720 * videoScale) / 2;
     // 映像の画面位置に実HTMLを貼る。最後の約11%だけ写真とHTMLを一緒に等比拡大する。
-    const x = roomLeft + roomWidth + (videoLeft + screen.x * videoScale - roomWidth) * finalZoom;
-    const y = roomTop + roomHeight / 2 + (videoTop + screen.y * videoScale - roomHeight / 2) * finalZoom;
-    const portalScale = screen.width * videoScale * finalZoom / portalSize.width;
+    // 終点の組版を最初からPC内に固定する。動くのは画面全体だけ。
+    const endScreen = screenAt(4), endVideoScale = Math.max(width / 1280, height / 720);
+    const endVideoLeft = -(1280 * endVideoScale - width) * filmX;
+    const endVideoTop = (height - 720 * endVideoScale) / 2;
+    const endX = width + (endVideoLeft + endScreen.x * endVideoScale - width) * 1.11;
+    const endY = height / 2 + (endVideoTop + endScreen.y * endVideoScale - height / 2) * 1.11;
+    const endScale = endScreen.width * endVideoScale * 1.11 / portalSize.width;
+    // 最終コマが1コマ手前で止まるブラウザでも、枠が消えた後の受け渡し位置を一致させる。
+    const settle = ease(ramp(zoomProgress, .88, .94)) * filmFinished;
+    const x = lerp(roomLeft + roomWidth + (videoLeft + screen.x * videoScale - roomWidth) * finalZoom,endX,settle);
+    const y = lerp(roomTop + roomHeight / 2 + (videoTop + screen.y * videoScale - roomHeight / 2) * finalZoom,endY,settle);
+    const portalScale = lerp(screen.width * videoScale * finalZoom / portalSize.width,endScale,settle);
     // 文字は等倍比を保ち、表示面の高さだけ実写へ合わせる。横幅だけで高さを決めるとベゼルにはみ出す。
     const portalHeight = screen.height / screen.width * portalSize.width;
-    const portalLeft = stageBox.left + x;
-    const portalTop = stageBox.top + y;
 
     opening.style.setProperty('--open', roomExpansion.toFixed(4));
     openingCopy.inert = roomExpansion >= 1 / 1.8;
@@ -178,7 +175,10 @@
     opening.style.setProperty('--zoom-hide', ease(ramp(zoomProgress, .08, .30)).toFixed(4));
     // 窓やPCの枠が見えているうちにロゴから文字へ交代する。
     opening.style.setProperty('--logo-fade', ease(ramp(filmTime, 2.4, logoFadeEnd)).toFixed(4));
-    opening.style.setProperty('--screen-ink', ease(ramp(filmTime, logoFadeEnd, 3.4)).toFixed(4));
+    const contentStart = ease(ramp(position, .20, .32));
+    const contentInk = ease(ramp(filmTime, 0, 3.4));
+    opening.style.setProperty('--screen-ink', (contentStart * lerp(.10,1,contentInk)).toFixed(4));
+    opening.style.setProperty('--screen-photo-ink', (contentStart * lerp(.20,1,contentInk)).toFixed(4));
     const reveal = ease(ramp(zoomProgress, .94, .995)) * filmFinished;
     opening.style.setProperty('--handoff', reveal.toFixed(4));
     opening.style.setProperty('--portal-white', (ease(ramp(zoomProgress, .77, .95)) * filmFinished).toFixed(4));
@@ -193,37 +193,23 @@
     preview.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${portalScale.toFixed(5)})`;
     preview.style.height = `${portalHeight.toFixed(2)}px`;
     preview.style.visibility = 'visible';
-    // 全画面に近づいたら、実際の次章と同じ文字位置・サイズへ収束させる。
-    portalText.forEach(({ screen, x: startX, y: startY, size }, index) => {
-      const realBox = textTargets[index].box;
-      const targetX = (realBox.left - portalLeft) / portalScale;
-      const targetY = (realBox.top - remainingTravel - portalTop) / portalScale;
-      const targetSize = textTargets[index].size / portalScale;
-      // まだベゼルが見える大きさでは、説明文の最終行を表示面の内側に保つ。
-      const innerGap = lerp(48, 12, clamp((portalScale - .25) / .4));
-      const safeY = index === 3
-        ? Math.min(targetY, portalHeight - realBox.height / portalScale - innerGap)
-        : targetY;
-      const startTop = startY;
-      // PCの枠が見える間は内側余白を保ち、枠が画面外へ出たら実ページの余白へ合わせる。
-      const layoutX = lerp(startX, targetX, textLayout);
-      const screenInset = startX * ease(ramp(portalLeft - stageBox.left, 0, 64));
-      const safeX = index === 1
-        ? layoutX
-        : Math.max(layoutX, screenInset, (textLeft - portalLeft) / portalScale);
-      screen.style.left = `${safeX.toFixed(2)}px`;
-      screen.style.top = `${lerp(startTop, safeY, textLayout).toFixed(2)}px`;
-      screen.style.fontSize = `${lerp(size, targetSize, textLayout).toFixed(2)}px`;
-      if (index === 3) {
-        const detailWidth = Math.min(
-          lerp(portalSize.width - startX * 2, realBox.width / portalScale, textLayout),
-          portalSize.width - safeX - 24,
-          (textRight - portalLeft) / portalScale - safeX,
-        );
-        screen.style.width = `${Math.max(1, detailWidth).toFixed(2)}px`;
-      }
-      if (index === 2) screen.style.lineHeight = lerp(1.2, 1.4, textLayout).toFixed(3);
+    const placeContent = (element,box) => {
+      element.style.left = `${((box.left - stageBox.left - endX) / endScale).toFixed(2)}px`;
+      element.style.top = `${((box.top - remainingTravel - stageBox.top - endY) / endScale).toFixed(2)}px`;
+      element.style.width = `${(box.width / endScale).toFixed(2)}px`;
+    };
+    portalText.forEach(({ screen }, index) => {
+      const target = textTargets[index];
+      placeContent(screen,target.box);
+      // 小さい表示面の端数丸めで、短い札や本文末尾が意図せず折り返されるのを防ぐ。
+      screen.style.width = `${(target.box.width / endScale + 1).toFixed(4)}px`;
+      screen.style.fontSize = `${(target.size / endScale).toFixed(4)}px`;
+      screen.style.lineHeight = `${(target.line / endScale).toFixed(4)}px`;
+      screen.style.letterSpacing = `${(target.spacing / endScale).toFixed(4)}px`;
     });
+    placeContent(screenPhoto,photoBox);
+    screenPhoto.style.height = `${(photoBox.height / endScale).toFixed(2)}px`;
+    screenPhoto.style.borderRadius = photoCorners.map(value=>`${(value / endScale).toFixed(2)}px`).join(' ');
     lastY = window.scrollY;
   }
   function schedule() {

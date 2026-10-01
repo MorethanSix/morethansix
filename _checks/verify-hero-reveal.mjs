@@ -15,22 +15,28 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
   await page.goto('http://127.0.0.1:8768/');await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
   await page.evaluate(()=>document.fonts.ready);
   async function at(fraction){
-   await page.evaluate(f=>{const s=document.querySelector('.opening'),h=document.querySelector('.header').offsetHeight;scrollTo({top:scrollY+s.getBoundingClientRect().top-h+(s.offsetHeight-innerHeight+h)*f,behavior:'instant'});},fraction);
+   await page.evaluate(f=>{const s=document.querySelector('.opening'),h=document.querySelector('.header').offsetHeight;scrollTo({top:scrollY+s.getBoundingClientRect().top-h+(s.offsetHeight-innerHeight+h)*f+(f===1?2:0),behavior:'instant'});},fraction);
    await page.evaluate(async()=>{let last=-1,same=0;for(let i=0;i<180;i++){await new Promise(requestAnimationFrame);const v=document.querySelector('.opening-film');same=!v.seeking&&v.currentTime===last?same+1:0;last=v.currentTime;if(same>=5)return;}throw new Error('映像が安定しない');});
    return page.evaluate(()=>{
     const v=document.querySelector('.opening-film'),p=document.querySelector('.opening-preview'),b=p.getBoundingClientRect(),photo=p.querySelector('img'),r=photo?.getBoundingClientRect();
-    return {time:v.currentTime,scrollY,ink:+getComputedStyle(document.querySelector('.opening-screen-card')).opacity,logo:+document.querySelector('.opening').style.getPropertyValue('--next'),photo:!!photo&&photo.complete&&photo.naturalWidth>0,photoPeek:r?Math.min(r.bottom,b.bottom)-Math.max(r.top,b.top):0,text:[...p.querySelectorAll('.screen-kicker,.screen-with,strong,.screen-detail')].map(e=>({x:e.offsetLeft,y:e.offsetTop,size:parseFloat(getComputedStyle(e).fontSize)}))};
+    return {time:v.currentTime,scrollY,ink:+getComputedStyle(document.querySelector('.opening-screen-card')).opacity,logo:+document.querySelector('.opening').style.getPropertyValue('--next'),photo:!!photo&&photo.complete&&photo.naturalWidth>0,photoInk:photo?+getComputedStyle(photo).opacity:0,photoBox:photo?[photo.offsetLeft,photo.offsetTop,photo.offsetWidth,photo.offsetHeight]:[],photoClipped:r?r.bottom>b.bottom:false,photoPeek:r?Math.min(r.bottom,b.bottom)-Math.max(r.top,b.top):0,text:[...p.querySelectorAll('.screen-kicker,.screen-with,strong,.screen-detail')].map(e=>({x:e.offsetLeft,y:e.offsetTop,size:parseFloat(getComputedStyle(e).fontSize)}))};
    });
   }
   async function time(t){let lo=0,hi=1,state;for(let n=0;n<11;n++){const mid=(lo+hi)/2;state=await at(mid);if(state.time<t)lo=mid;else hi=mid;}return at((lo+hi)/2);}
   const early=await time(.02);await page.screenshot({path:out+width+'-early.png'});
   const middle=await time(2);await page.screenshot({path:out+width+'-middle.png'});
   const late=await time(3.4);await page.screenshot({path:out+width+'-late.png'});
-  check('ロゴ場面から薄い本文と画像の端が見える',()=>{assert.equal(early.logo,1);assert.ok(early.ink>=.04&&early.ink<.3);assert.ok(early.photo&&early.photoPeek>1);});
+  check('ロゴ場面から薄い本文と写真が見える',()=>{assert.equal(early.logo,1);assert.ok(early.ink>=.04&&early.ink<.3);assert.ok(early.photo&&early.photoPeek>1&&early.photoInk>.1);
+   // PCは下端から写真が見切れる。縦長端末では実本文と同じ固定配置で写真全体が収まる。
+   assert.equal(early.photoClipped,width>=760);
+  });
   check('接近に従って文字が濃くなる',()=>assert.ok(early.ink<middle.ink&&middle.ink<late.ink&&late.ink>.95));
   check('画面内の文字組版が動かない',()=>{for(let n=0;n<early.text.length;n++)for(const k of ['x','y','size'])assert.ok(Math.abs(early.text[n][k]-late.text[n][k])<1.1,`${n}:${k}`);});
+  check('画面内の写真も位置と形を保つ',()=>{assert.equal(early.photoBox.length,4);early.photoBox.forEach((v,i)=>assert.ok(Math.abs(v-late.photoBox[i])<1.1));});
   check('動画の秒数とスクロールの進みが均等でゆっくり',()=>{const a=(middle.scrollY-early.scrollY)/(middle.time-early.time),b=(late.scrollY-middle.scrollY)/(late.time-middle.time);assert.ok(a>height*.7&&b>height*.7);assert.ok(Math.abs(a-b)/a<.03);});
   await at(1);await page.waitForFunction(()=>document.documentElement.style.getPropertyValue('--text-reveal')==='1.0000');
+  const alignment=await page.evaluate(()=>[['.screen-kicker','.section-top .eyebrow'],['.screen-with','.section-top > span'],['strong','.consult-heading h2'],['.screen-detail','.consult-heading > p'],['.screen-photo','.consult-photo img']].map(([a,b])=>{const x=document.querySelector('.opening-preview').querySelector(a).getBoundingClientRect(),y=document.querySelector('.consultation').querySelector(b).getBoundingClientRect();return {x:Math.abs(x.left-y.left),y:Math.abs(x.top-y.top)};}));
+  check('受け渡しで文字と写真が飛ばない',()=>alignment.forEach(p=>assert.ok(p.x<2&&p.y<2,JSON.stringify(p))));
   check('本文接続と例外なし',()=>assert.deepEqual(errors,[]));await page.screenshot({path:out+width+'-handoff.png'});
  }catch(e){results.push({width,name:'実行',pass:false,error:e.message});await page.screenshot({path:out+width+'-failure.png'});}
  await context.close();console.log(JSON.stringify(results.filter(r=>r.width===width)));
