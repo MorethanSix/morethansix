@@ -3,6 +3,40 @@ export const mix = (a, b, t) => a + (b - a) * t;
 export const ramp = (p, a, b) => clamp((p - a) / (b - a));
 export const smooth = t => t * t * (3 - 2 * t);
 export const rad = a => a * Math.PI / 180;
+// 回転中は左右が少し画面外へ出る大きさを保ち、退出するときだけ縮む。
+export const ringScaleAt = p => mix(1, .72, smooth(ramp(p, .88, 1)));
+export function ringLayout(width, height, footerTop, captionHeight, mobile) {
+  const cardW = width * .29, cardH = cardW / 1.5, radius = width * .495;
+  const peak = Math.min(80, height * .12), perspective = width * 4;
+  const top = Math.min(56, height * .08), bottom = footerTop - 12;
+  // 全回転の投影範囲で上下の余白を確保する。左右のクロップは意図した構図。
+  const boundsAt = tilt => {
+    const sine = Math.sin(rad(tilt)), cosine = Math.cos(rad(tilt));
+    let min = Infinity, max = -Infinity;
+    for (let angle = 0; angle < 360; angle += 3) {
+      const a = rad(angle);
+      for (const x of [-cardW / 2, cardW / 2]) {
+        for (const y of [-cardH / 2, cardH / 2 + captionHeight]) {
+          const dy = radius * Math.cos(a) * sine + y * cosine - x * Math.sin(a) * sine - peak * .65;
+          const z = radius * Math.cos(a) * cosine - y * sine - x * Math.sin(a) * cosine;
+          const projected = dy * perspective / (perspective - z);
+          min = Math.min(min, projected); max = Math.max(max, projected);
+        }
+      }
+    }
+    return {min, max};
+  };
+  let low = 0, high = mobile ? 30 : 20;
+  for (let i = 0; i < 10; i++) {
+    const tilt = (low + high) / 2, bounds = boundsAt(tilt);
+    if (bounds.max - bounds.min <= bottom - top) low = tilt; else high = tilt;
+  }
+  const tilt = low, bounds = boundsAt(tilt);
+  const originY = (top + bottom - bounds.min - bounds.max) / 2;
+  const frontY = radius * Math.sin(rad(tilt)) - cardH / 2 * Math.cos(rad(tilt)) - peak * .65;
+  const frontZ = radius * Math.cos(rad(tilt)) + cardH / 2 * Math.sin(rad(tilt));
+  return {cardW, cardH, radius, tilt, peak, perspective, originY, frontTop:originY + frontY * perspective / (perspective - frontZ)};
+}
 export function phases(p) {
   return {
     form: smooth(ramp(p, .055, .19)),

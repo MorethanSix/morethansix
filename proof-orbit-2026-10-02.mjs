@@ -1,4 +1,4 @@
-import { mix, ramp, smooth, rad, phases, elevation, rotation, angleAt, faceShading, rowAnchor } from './proof-orbit-motion-2026-10-02.mjs';
+import { mix, ramp, smooth, rad, phases, elevation, rotation, angleAt, faceShading, rowAnchor, ringScaleAt, ringLayout } from './proof-orbit-motion-2026-10-02.mjs?v=3';
 const proof = document.querySelector('.proof-orbit');
 const journey = proof.querySelector('.orbit-journey');
 const stage = proof.querySelector('.orbit-stage');
@@ -21,17 +21,19 @@ function measure() {
   const head = document.querySelector('.header').offsetHeight;
   proof.style.setProperty('--orbit-head',`${head}px`);
   const w = stage.clientWidth, h = stage.clientHeight;
-  // 横列の見える枚数は保ち、輪だけ利用可能な高さへ収める。
-  const mobile = w <= 760, sceneW = Math.min(w,(h - 90) / .45);
-  const cardW = sceneW * (mobile ? .25 : .215);
-  const radius = sceneW * (mobile ? .435 : .34), tilt = mobile ? 30 : 20;
-  const peak = Math.min(80,h * .12), originY = h * .52;
+  const mobile = w <= 760;
+  const footerTop = proof.querySelector('.orbit-foot').offsetTop;
+  const captionHeight = cards[0].querySelector('figcaption').offsetHeight;
+  const layout = ringLayout(w,h,footerTop,captionHeight,mobile);
+  const {cardW,cardH,radius,tilt,peak,originY,frontTop} = layout;
+  const copyHeight = proof.querySelector('.orbit-copy').offsetHeight;
+  const copyY = Math.min(originY - peak * .65 - 12,frontTop - copyHeight / 2 + 8);
   const travel = h * (mobile ? 3.4 : 3.6);
-  geometry = {w,h,head,cardW,cardH:cardW / 1.5,radius,tilt,peak,originY,
+  geometry = {w,h,head,cardW,cardH,radius,tilt,peak,originY,copyY,rowOriginY:h * .52,
     rowW:w * .4,gap:w * .024,gutter:w * .055,travel,end:1 + h / travel,
     halfSpan:Math.atan(cardW / 2 / radius) * 180 / Math.PI};
   journey.style.setProperty('--travel',`${geometry.travel}px`);
-  for (const [key,value] of Object.entries({'card-width':cardW,'card-height':cardW / 1.5,perspective:w * 2,'origin-x':w / 2,'origin-y':originY,'copy-y':originY - peak * .65 - 12,'row-width':geometry.gutter * 2 + 10 * geometry.rowW + 9 * geometry.gap})) stage.style.setProperty(`--${key}`,`${value}px`);
+  for (const [key,value] of Object.entries({'card-width':cardW,'card-height':cardH,perspective:layout.perspective,'origin-x':w / 2,'origin-y':geometry.rowOriginY,'copy-y':copyY,'row-width':geometry.gutter * 2 + 10 * geometry.rowW + 9 * geometry.gap})) stage.style.setProperty(`--${key}`,`${value}px`);
   readScroll();
 }
 
@@ -42,6 +44,7 @@ function readScroll() {
 }
 function render(p) {
   const g = geometry, {form,dark,leave,title} = phases(p);
+  const ringScale = ringScaleAt(p), originY = mix(g.rowOriginY,g.originY,form);
   const nextForming = p > .035;
   if (nextForming !== forming) {
     if (nextForming) rowScroll = strip.scrollLeft;
@@ -56,27 +59,29 @@ function render(p) {
   stage.style.setProperty('--stage-ink',dark > .5 ? '#fbf7ed' : '#092b4f');
   stage.style.setProperty('--heading',String(1 - smooth(ramp(p,.035,.11))));
   stage.style.setProperty('--title',String(title));
+  stage.style.setProperty('--origin-y',`${originY}px`);
   stage.style.setProperty('--floor',String(form * (1 - leave * .6)));
-  stage.style.setProperty('--floor-y',`${g.originY + g.radius * Math.sin(rad(g.tilt)) + g.cardH * .65 - leave * g.h * .18}px`);
+  stage.style.setProperty('--floor-y',`${originY + (g.radius * Math.sin(rad(g.tilt)) + g.cardH * .65) * ringScale - leave * g.h * .18}px`);
   stage.style.setProperty('--card-shadow',String(.30 * smooth(ramp(p,.02,.12))));
   stage.style.setProperty('--edge',String(form * .28));
-  stage.style.setProperty('--copy-y',`${g.originY - g.peak * .65 - 12 - leave * g.h * .18}px`);
+  stage.style.setProperty('--copy-y',`${g.copyY - leave * g.h * .18}px`);
   journey.dataset.progress = p.toFixed(4);
   journey.dataset.rotation = rotation(p).toFixed(2);
+  journey.dataset.ringScale = ringScale.toFixed(4);
   const lift = elevation(p) * g.peak;
   cards.forEach((card,i) => {
     const anchor = rowAnchor(rowScroll,g.rowW,g.gap,g.gutter,g.w);
     const angle = angleAt(i,p,anchor), theta = rad(angle);
-    const ringX = Math.sin(theta) * g.radius;
-    const ringY = Math.cos(theta) * g.radius * Math.sin(rad(g.tilt));
-    const ringZ = Math.cos(theta) * g.radius * Math.cos(rad(g.tilt));
+    const ringX = Math.sin(theta) * g.radius * ringScale;
+    const ringY = Math.cos(theta) * g.radius * Math.sin(rad(g.tilt)) * ringScale;
+    const ringZ = Math.cos(theta) * g.radius * Math.cos(rad(g.tilt)) * ringScale;
     const rowX = g.gutter + i * (g.rowW + g.gap) + g.rowW / 2 - g.w / 2 - (forming ? rowScroll : 0);
     // 画面外の写真は透明な間に輪へ配置。中央を横切る移動を見せない。
     const offscreen = rowX - g.rowW / 2 > g.w / 2 || rowX + g.rowW / 2 < -g.w / 2;
     const placed = offscreen && form > 0, blend = placed ? 1 : form;
     const x = mix(rowX,ringX,blend);
     const y = mix(-g.h * .04,ringY,blend) + lift - leave * g.h * .18;
-    const z = ringZ * blend, scale = mix(g.rowW / g.cardW,1,blend);
+    const z = ringZ * blend, scale = mix(g.rowW / g.cardW,ringScale,blend);
     const alpha = placed ? smooth(ramp(form,.42,.94)) : 1;
     const shade = faceShading(angle,g.halfSpan);
     card.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateX(${-g.tilt * blend}deg) rotateY(${angle * blend}deg) scale(${scale})`;
@@ -103,7 +108,7 @@ function tick(time) {
 }
 function schedule() { if (enabled && !frame && !document.hidden) frame = requestAnimationFrame(tick); }
 function syncMode() {
-  // 輪は高さに応じて縮める。最初の横列さえ収まらない低い画面だけ静止列へ。
+  // 低い画面は輪の傾きを浅くする。最初の横列も収まらない高さだけ静止列へ。
   const availableHeight = innerHeight - document.querySelector('.header').offsetHeight;
   const fits = availableHeight >= Math.max(420,proof.clientWidth * .32 + 140);
   const next = !root.classList.contains('motion-user-paused') && !reduced.matches && fits;
