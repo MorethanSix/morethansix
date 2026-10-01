@@ -4,15 +4,19 @@ import assert from 'node:assert/strict';
 const require=createRequire('/Users/ym./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/package.json');
 const engine=process.argv[2]||'chromium',label=process.argv[3]||'local';
 if(!['chromium','webkit'].includes(engine)||!['baseline','local','photo'].includes(label))throw new Error('対象外');
+const base=process.argv[4]||'http://127.0.0.1:8768/';
+if(!['http://127.0.0.1:8768/','https://morethansix.jp/'].includes(base))throw new Error('対象外のURL');
 const browser=await require('playwright')[engine].launch(engine==='chromium'?{channel:'chrome',headless:true}:{headless:true});
-const out='/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-reveal-'+label+'-'+engine+'/';
+const out='/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-reveal-'+label+'-'+engine+(base.startsWith('https:')?'-production':'')+'/';
 await mkdir(out,{recursive:true});const results=[];
 for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,900],[390,844],[320,640]])){
  const context=await browser.newContext({viewport:{width,height},isMobile:width<760,hasTouch:width<760}),page=await context.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  const check=(name,fn)=>{try{fn();results.push({width,name,pass:true});}catch(e){results.push({width,name,pass:false,error:e.message});}};
  try{
-  await page.goto('http://127.0.0.1:8768/');await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
+  await page.goto(base);
+  if(label!=='baseline')assert.equal(await page.locator('script[src="site.js?v=20261002-hero5"]').count(),1);
+  await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
   await page.evaluate(()=>document.fonts.ready);
   async function at(fraction){
    await page.evaluate(f=>{const s=document.querySelector('.opening'),h=document.querySelector('.header').offsetHeight;scrollTo({top:scrollY+s.getBoundingClientRect().top-h+(s.offsetHeight-innerHeight+h)*f+(f===1?2:0),behavior:'instant'});},fraction);
