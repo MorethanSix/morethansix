@@ -74,6 +74,7 @@
   let renderedTime = 0;
   let filmReady = false;
   let filmLoading = false;
+  let filmPriming = false;
   let filmError = false;
   let filmUrl = null;
   let filmAbort = null;
@@ -295,19 +296,31 @@
     }
   }
   const readyFilm = () => {
-    if (disposed) return;
+    if (disposed || filmReady || filmError || video.readyState < 2) return;
+    // 最初のコマだけを準備し、以降はスクロールによるシークで進める。
+    filmPriming = false;
+    video.pause();
     filmLoading = false;
     filmReady = true;
     paintFilm(video.currentTime);
+    if (filmError) return;
     room.classList.add('film-ready');
+    document.removeEventListener('touchend', primeFilm);
+    document.removeEventListener('click', primeFilm);
     // 読み込み中に本文へ進んだ人の現在位置を、後から長い演出へ変えない。
-    if (!cinematic && window.scrollY > headerHeight()) heroDeferred = true;
+    if (!cinematic && opening.getBoundingClientRect().bottom <= headerHeight() + 32) heroDeferred = true;
     syncMotion();
   };
-  video.addEventListener('loadeddata', readyFilm);
+  video.addEventListener('loadeddata', () => {
+    // playの準備中にpauseすると、Safariで最初の描画前に中断される場合がある。
+    if (!filmPriming) readyFilm();
+  });
   video.addEventListener('seeked', () => {
     paintFilm(video.currentTime);
     schedule();
+  });
+  video.addEventListener('timeupdate', () => {
+    if (filmPriming && video.currentTime > 0) readyFilm();
   });
   const failFilm = () => {
     if (filmError || disposed) return;
@@ -316,6 +329,26 @@
     syncMotion();
   };
   video.addEventListener('error', failFilm);
+  // iOSではpreloadだけで最初のコマまで準備されない場合がある。
+  // 無音・インラインでデコードを開始し、拒否されたら次の利用者操作で再試行する。
+  function primeFilm() {
+    if (disposed || filmReady || filmError || filmPriming || paused || reduced.matches || !filmUrl) return;
+    filmPriming = true;
+    video.play().then(() => {
+      // Safariはplayの解決直後もデコードの準備中の場合がある。
+      // コマが進んだ通知を受けてからreadyFilmで止める。
+      if (disposed || paused || reduced.matches) {
+        filmPriming = false;
+        video.pause();
+      }
+    }).catch(error => {
+      filmPriming = false;
+      // 自動再生の拒否や初回コマでのpauseは、動画ファイルの失敗ではない。
+      if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') failFilm();
+    });
+  }
+  document.addEventListener('touchend', primeFilm, { passive: true });
+  document.addEventListener('click', primeFilm);
   // Blob URLならRange非対応のローカルサーバーでも全コマへ正確にシークできる。
   const loadFilm = () => {
     if (filmLoading || filmReady || filmError || disposed || reduced.matches) return;
@@ -330,21 +363,37 @@
       .then(blob => {
         if (disposed) return;
         filmUrl = URL.createObjectURL(blob);
+        video.muted = true;
+        video.playsInline = true;
         video.src = filmUrl;
+        video.load();
+        primeFilm();
       })
       .catch(error => { if (!disposed && error.name !== 'AbortError') failFilm(); });
   };
   window.addEventListener('pagehide', event => {
     if (event.persisted) return;
     disposed = true;
+    video.pause();
+    document.removeEventListener('touchend', primeFilm);
+    document.removeEventListener('click', primeFilm);
     filmAbort?.abort();
     if (filmUrl) URL.revokeObjectURL(filmUrl);
   });
-  window.addEventListener('pageshow', event => { if (event.persisted) schedule(); });
+  function onScroll() {
+    // 本文を読んだ後、先頭へ戻った場合は保留していたヒーローを開始する。
+    if (heroDeferred && filmReady && !filmError && !paused && !reduced.matches && window.scrollY <= headerHeight()) {
+      heroDeferred = false;
+      syncMotion();
+    }
+    schedule();
+  }
+  window.addEventListener('pageshow', event => { if (event.persisted) onScroll(); });
   if (video.requestVideoFrameCallback) {
     const onFilmFrame = (_, metadata) => {
       if (disposed) return;
       paintFilm(metadata.mediaTime);
+      if (filmPriming && metadata.mediaTime > 0) readyFilm();
       schedule();
       video.requestVideoFrameCallback(onFilmFrame);
     };
@@ -354,18 +403,20 @@
   button.addEventListener('click', () => {
     paused = !paused;
     if (!paused) heroDeferred = false;
+    if (paused) { filmPriming = false; video.pause(); } else primeFilm();
     offset = 0;
     syncMotion();
     draw();
   });
   reduced.addEventListener('change', () => {
-    if (!reduced.matches) loadFilm();
+    if (reduced.matches) { filmPriming = false; video.pause(); }
+    else { loadFilm(); primeFilm(); }
     offset = 0;
     syncMotion();
     draw();
   });
   loadFilm();
-  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', schedule);
   document.addEventListener('visibilitychange', () => document.hidden ? cancelFrame() : schedule());
   syncMotion();
