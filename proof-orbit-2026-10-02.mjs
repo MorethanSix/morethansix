@@ -21,8 +21,10 @@ function measure() {
   const head = document.querySelector('.header').offsetHeight;
   proof.style.setProperty('--orbit-head',`${head}px`);
   const w = stage.clientWidth, h = stage.clientHeight;
-  const mobile = w <= 760, cardW = w * (mobile ? .25 : .215);
-  const radius = w * (mobile ? .435 : .34), tilt = mobile ? 30 : 20;
+  // 横列の見える枚数は保ち、輪だけ利用可能な高さへ収める。
+  const mobile = w <= 760, sceneW = Math.min(w,(h - 90) / .45);
+  const cardW = sceneW * (mobile ? .25 : .215);
+  const radius = sceneW * (mobile ? .435 : .34), tilt = mobile ? 30 : 20;
   const peak = Math.min(80,h * .12), originY = h * .52;
   const travel = h * (mobile ? 3.4 : 3.6);
   geometry = {w,h,head,cardW,cardH:cardW / 1.5,radius,tilt,peak,originY,
@@ -79,6 +81,8 @@ function render(p) {
     const shade = faceShading(angle,g.halfSpan);
     card.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateX(${-g.tilt * blend}deg) rotateY(${angle * blend}deg) scale(${scale})`;
     card.style.setProperty('--card-alpha',String(alpha));
+    // 横列の写真拡大率は業態名へ掛けない。低めの画面でも案内との間隔を保つ。
+    card.style.setProperty('--caption-scale',String(1 / scale));
     card.style.setProperty('--shade-left',String(shade.front[0] * form));
     card.style.setProperty('--shade-right',String(shade.front[1] * form));
     card.style.setProperty('--shade-b-left',String(shade.back[0] * form));
@@ -99,10 +103,10 @@ function tick(time) {
 }
 function schedule() { if (enabled && !frame && !document.hidden) frame = requestAnimationFrame(tick); }
 function syncMode() {
-  // 写真幅に比例する輪と業態名が収まる高さを確保。低い/幅広の画面は静止列へ。
+  // 輪は高さに応じて縮める。最初の横列さえ収まらない低い画面だけ静止列へ。
   const availableHeight = innerHeight - document.querySelector('.header').offsetHeight;
-  const fits = availableHeight >= Math.max(420,proof.clientWidth * .45 + 90);
-  const next = root.classList.contains('cinematic') && !root.classList.contains('motion-paused') && !reduced.matches && fits;
+  const fits = availableHeight >= Math.max(420,proof.clientWidth * .32 + 140);
+  const next = !root.classList.contains('motion-user-paused') && !reduced.matches && fits;
   if (next === enabled) { if (enabled) measure(); return; }
   if (!forming) rowScroll = strip.scrollLeft;
   if (frame) cancelAnimationFrame(frame);

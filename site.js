@@ -64,6 +64,7 @@
     x, y, size,
   }));
   let paused = false;
+  let heroDeferred = false;
   let frame = 0;
   let cinematic = false;
   let position = 0;
@@ -81,7 +82,7 @@
   const query = new URLSearchParams(location.search);
   const sampleName = query.get('frame');
   const hasSample = false; // 公開版では撮影用の固定表示を使わない
-  const stopped = () => paused || reduced.matches || filmError || !filmReady;
+  const stopped = () => paused || reduced.matches || heroDeferred || filmError || !filmReady;
   const headerHeight = () => header.getBoundingClientRect().height;
   const progress = () => {
     const box = opening.getBoundingClientRect();
@@ -239,6 +240,8 @@
   function syncMotion() {
     const wasMoving = cinematic && !root.classList.contains('motion-paused');
     const willMove = !stopped();
+    const wasUserPaused = root.classList.contains('motion-user-paused');
+    const userPaused = paused || reduced.matches;
     // ページ内リンクの上余白に残る前章の端を、閲覧中の章と誤認しない。
     const inHero = !wasMoving || progress() < 1;
     let anchor = [...document.querySelectorAll('main > section')].find(section => (inHero || section !== opening) && section.getBoundingClientRect().bottom > headerHeight() + 32);
@@ -248,7 +251,7 @@
       if (journey.getBoundingClientRect().bottom > headerHeight() + 32) {
         // 輪の途中で停止/再開したら、10枚を読める列の入口へ合わせる。
         anchor = journey;
-        anchorTop = headerHeight();
+        anchorTop = wasUserPaused !== userPaused ? headerHeight() : journey.getBoundingClientRect().top;
       } else {
         // 事実欄を読んでいる場合は、その文章の画面位置を保つ。
         anchor = anchor.querySelector('.orbit-intro');
@@ -257,9 +260,11 @@
     }
     if (!stopped()) enableCinema();
     root.classList.toggle('motion-paused', stopped());
+    // 利用者の停止設定だけを実績カードへ共有し、動画の可否とは分離する。
+    root.classList.toggle('motion-user-paused', userPaused);
     // 映像の準備完了・停止・端末設定変更のすべてで、後続の帯も新しい寸法へ合わせる。
     refreshProof();
-    if (wasMoving !== willMove && anchor) {
+    if ((wasMoving !== willMove || wasUserPaused !== userPaused) && anchor) {
       if (wasMoving && anchor === opening) {
         window.scrollTo({ top: position < .5 ? 0 : Math.max(0, consultation.offsetTop - headerHeight()), behavior: 'instant' });
       } else {
@@ -273,10 +278,10 @@
       openingServices.inert = false;
       scrollHint.inert = false;
     }
-    button.setAttribute('aria-pressed', String(stopped()));
-    button.disabled = reduced.matches || filmError || !filmReady;
-    label.textContent = filmError ? '静止画で表示中' : reduced.matches ? '動きを抑制中' : !filmReady ? '映像を読み込み中' : paused ? '動きを再開' : '動きを止める';
-    button.title = filmError ? '動画を読み込めなかったため静止画で表示しています' : reduced.matches ? '端末の「動きを減らす」設定を優先しています' : '';
+    button.setAttribute('aria-pressed', String(userPaused));
+    button.disabled = reduced.matches;
+    label.textContent = reduced.matches ? '動きを抑制中' : paused ? '動きを再開' : '動きを止める';
+    button.title = reduced.matches ? '端末の「動きを減らす」設定を優先しています' : '';
     if (stopped()) cancelFrame(); else schedule();
   }
   function paintFilm(time) {
@@ -296,7 +301,7 @@
     paintFilm(video.currentTime);
     room.classList.add('film-ready');
     // 読み込み中に本文へ進んだ人の現在位置を、後から長い演出へ変えない。
-    if (!cinematic && window.scrollY > headerHeight()) paused = true;
+    if (!cinematic && window.scrollY > headerHeight()) heroDeferred = true;
     syncMotion();
   };
   video.addEventListener('loadeddata', readyFilm);
@@ -308,7 +313,6 @@
     if (filmError || disposed) return;
     filmLoading = false;
     filmError = true;
-    paused = true;
     syncMotion();
   };
   video.addEventListener('error', failFilm);
@@ -349,6 +353,7 @@
   button.hidden = false;
   button.addEventListener('click', () => {
     paused = !paused;
+    if (!paused) heroDeferred = false;
     offset = 0;
     syncMotion();
     draw();
