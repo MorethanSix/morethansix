@@ -109,6 +109,7 @@
   max-width: none;
   object-fit: cover;
   opacity: var(--screen-photo-ink, 0);
+  filter: saturate(var(--screen-photo-saturation, 1)) contrast(var(--screen-photo-contrast, 1));
 }
 
 .cinematic .opening { height: calc(100svh - var(--head) + (150svh + var(--head)) * var(--travel-share, 1)); }

@@ -177,11 +177,17 @@
     opening.style.setProperty('--logo-fade', ease(ramp(filmTime, 2.4, logoFadeEnd)).toFixed(4));
     const contentStart = ease(ramp(position, .20, .32));
     const contentInk = ease(ramp(filmTime, 0, 3.4));
+    const paperReveal = ease(ramp(zoomProgress, .77, .95)) * filmFinished;
+    // 写真は青い画面の間は淡い面として残し、きなりの背景と一緒に鮮明にする。
+    const photoApproach = ease(ramp(filmTime, 2.7, 3.5));
+    const photoInk = lerp(lerp(.04,.50,photoApproach),1,paperReveal);
     opening.style.setProperty('--screen-ink', (contentStart * lerp(.10,1,contentInk)).toFixed(4));
-    opening.style.setProperty('--screen-photo-ink', (contentStart * lerp(.20,1,contentInk)).toFixed(4));
+    opening.style.setProperty('--screen-photo-ink', (contentStart * photoInk).toFixed(4));
+    opening.style.setProperty('--screen-photo-contrast', lerp(.40,1,paperReveal).toFixed(4));
+    opening.style.setProperty('--screen-photo-saturation', lerp(.20,1,paperReveal).toFixed(4));
     const reveal = ease(ramp(zoomProgress, .94, .995)) * filmFinished;
     opening.style.setProperty('--handoff', reveal.toFixed(4));
-    opening.style.setProperty('--portal-white', (ease(ramp(zoomProgress, .77, .95)) * filmFinished).toFixed(4));
+    opening.style.setProperty('--portal-white', paperReveal.toFixed(4));
     // 同位置の文字を半透明で二重に重ねると灰色に見えるため、画面が全面化してから入れ替える。
     const textReveal = Number(position >= 1 && filmFinished > .99);
     stage.style.pointerEvents = textReveal ? 'none' : '';
