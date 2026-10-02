@@ -6,7 +6,9 @@ import {promisify} from 'node:util';
 import assert from 'node:assert/strict';
 
 const repo='/Users/ym./.worktrees/morethansix-proof-orbit-20261002';
-const base='http://127.0.0.1:8768/';
+const base=process.argv[5]||'http://127.0.0.1:8768/';
+if(!['http://127.0.0.1:8768/','https://morethansix.jp/'].includes(base))throw new Error('対象外のURL');
+const production=base.startsWith('https:');
 const require=createRequire('/Users/ym./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/package.json');
 const execFileAsync=promisify(execFile);
 const engine=process.argv[2]||'chromium';
@@ -14,6 +16,7 @@ const label=process.argv[3]||'before';
 const variant=process.argv[4]||'normal';
 if(!['chromium','webkit'].includes(engine)||!['before','after'].includes(label)||!['normal','without-compose'].includes(variant))throw new Error('対象外');
 if(label==='before'&&variant!=='normal')throw new Error('beforeはnormalのみ');
+if(production&&(label!=='after'||variant!=='normal'))throw new Error('本番は公開済みのafter/normalのみ');
 
 const sha256=value=>createHash('sha256').update(value).digest('hex');
 const gitShow=async spec=>(await execFileAsync('git',['show','--format=',spec],{cwd:repo,maxBuffer:32*1024*1024})).stdout;
@@ -33,7 +36,7 @@ const composeCount=scriptSource.split(composeCall).length-1;
 const servedScript=variant==='without-compose'
   ? (()=>{assert.equal(composeCount,1,'変異対象のcompose呼出しが一意ではありません');return scriptSource.replace(composeCall,'/* cadence mutation: compose omitted */');})()
   : scriptSource;
-const out=`/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-cadence/v4/${engine}-${label}-${variant}/`;
+const out=`/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-cadence/v4/${engine}-${label}-${variant}${production?'-production':''}/`;
 await mkdir(out,{recursive:true});
 
 // この測定値は既存screenTrackの画面矩形測定を独立した検証コードで適用するもの。
@@ -60,7 +63,8 @@ for(const width of [1440,390]){
   const page=await context.newPage();
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
-  await page.route('**/*',async route=>{
+  // 公開検査ではHTML/JSを差し替えず、実配信内容とSHAを照合する。
+  if(!production)await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
     if(url.origin!==new URL(base).origin)return route.continue();
     if(url.pathname==='/'||url.pathname==='/index.html')return route.fulfill({body:indexSource,contentType:'text/html'});
@@ -184,6 +188,6 @@ for(const width of [1440,390]){
   await context.close();
 }
 await browser.close();
-await writeFile(out+'metadata.json',JSON.stringify({expected,variant,sourceSha256:sha256(scriptSource),servedSha256:sha256(servedScript),indexSha256:sha256(indexSource),geometryModel:'screenTrack geometry; not raw-video pixel recognition'},null,2));
+await writeFile(out+'metadata.json',JSON.stringify({base,production,expected,variant,sourceSha256:sha256(scriptSource),servedSha256:sha256(servedScript),indexSha256:sha256(indexSource),geometryModel:'screenTrack geometry; not raw-video pixel recognition'},null,2));
 await writeFile(out+'results.json',JSON.stringify(results,null,2));
 process.exitCode=results.some(result=>result.checks.some(check=>!check.pass))?1:0;

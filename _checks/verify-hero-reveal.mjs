@@ -15,7 +15,7 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
  const check=(name,fn)=>{try{fn();results.push({width,name,pass:true});}catch(e){results.push({width,name,pass:false,error:e.message});}};
  try{
   await page.goto(base);
-  const revision=base.startsWith('https:')?'20261002-hero6':'20261003-hero9';
+  const revision='20261003-hero9';
   if(label!=='baseline')assert.equal(await page.locator(`script[src="site.js?v=${revision}"]`).count(),1);
   await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
   await page.evaluate(()=>document.fonts.ready);
