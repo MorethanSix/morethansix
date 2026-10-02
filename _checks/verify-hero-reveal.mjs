@@ -15,7 +15,8 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
  const check=(name,fn)=>{try{fn();results.push({width,name,pass:true});}catch(e){results.push({width,name,pass:false,error:e.message});}};
  try{
   await page.goto(base);
-  if(label!=='baseline')assert.equal(await page.locator('script[src="site.js?v=20261002-hero6"]').count(),1);
+  const revision=base.startsWith('https:')?'20261002-hero6':'20261002-hero7';
+  if(label!=='baseline')assert.equal(await page.locator(`script[src="site.js?v=${revision}"]`).count(),1);
   await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
   await page.evaluate(()=>document.fonts.ready);
   async function at(fraction){
@@ -30,7 +31,7 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
   const early=await time(.02);await page.screenshot({path:out+width+'-early.png'});
   const middle=await time(2);await page.screenshot({path:out+width+'-middle.png'});
   if(label!=='baseline'){
-   const pixels=await page.evaluate(()=>{const v=document.querySelector('.opening-film'),c=document.querySelector('.opening-film-surface'),p=document.querySelector('.opening-poster');return {video:[v.videoWidth,v.videoHeight],canvas:[c.width,c.height],poster:[p.naturalWidth,p.naturalHeight],duration:v.duration};});
+   const pixels=await page.evaluate(()=>{const v=document.querySelector('.opening-film'),c=document.querySelector('.opening-film-surface'),p=document.querySelector('.opening-poster'),pad=+(c.dataset.framePadding||0);return {video:[v.videoWidth,v.videoHeight],canvas:[c.width-pad*2,c.height-pad*2],poster:[p.naturalWidth,p.naturalHeight],duration:v.duration};});
    check('4Kの動画と静止画を縮小せず描画する',()=>{for(const key of ['video','canvas','poster'])assert.deepEqual(pixels[key],[3840,2160]);assert.ok(Math.abs(pixels.duration-97/24)<.001);});
   }
   const late=await time(3.4);await page.screenshot({path:out+width+'-late.png'});

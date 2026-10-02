@@ -14,6 +14,7 @@
   filmSurface.width = 1280;
   filmSurface.height = 720;
   filmSurface.setAttribute('aria-hidden', 'true');
+  filmSurface.style.willChange = 'transform';
   room.appendChild(filmSurface);
   const filmContext = filmSurface.getContext('2d', { alpha: false });
   const preview = document.querySelector('.opening-preview');
@@ -52,6 +53,8 @@
     { time: 3.833333, x: 190, y: 72, width: 1075, height: 617 },
     { time: 4, x: 49, y: 9, width: 1328, height: 755 },
   ];
+  // 終盤の1コマごとの測定揺れをカメラの軌道に持ち込まない。
+  const cameraTrack = screenTrack.filter(point => point.time <= 3.75 || point.time === 4);
   const portalSize = { width: 1000 };
   const portalText = [
     ['.screen-kicker', '.section-top .eyebrow'],
@@ -71,6 +74,14 @@
   let lastY = window.scrollY;
   const refreshProof = () => document.dispatchEvent(new Event('mts:motionchange'));
   let renderedTime = 0;
+  let paintedFrame = -1;
+  let frameRecovery = 0;
+  let filmPadding = 0;
+  let presentationTime = 0;
+  let lastDrawAt = 0;
+  const hasVideoFrames = typeof video.requestVideoFrameCallback === 'function';
+  let portalLayoutDirty = true;
+  let portalLayoutSize = '';
   let filmReady = false;
   let filmLoading = false;
   let filmPriming = false;
@@ -91,16 +102,20 @@
     if (distance >= travelShare) return 1;
     return clamp(introShare + (distance - introShare) * cameraSpeed);
   };
-  const screenAt = time => {
-    const index = Math.max(0, screenTrack.findIndex((point, i) => i === screenTrack.length - 1 || time <= screenTrack[i + 1].time));
-    const a = screenTrack[index];
-    const b = screenTrack[Math.min(index + 1, screenTrack.length - 1)];
+  const screenAt = (time, track = screenTrack) => {
+    const index = Math.max(0, track.findIndex((point, i) => i === track.length - 1 || time <= track[i + 1].time));
+    const a = track[index];
+    const b = track[Math.min(index + 1, track.length - 1)];
     if (a === b) return a;
     const u = clamp((time - a.time) / (b.time - a.time));
-    const before = screenTrack[Math.max(0, index - 1)];
-    const after = screenTrack[Math.min(screenTrack.length - 1, index + 2)];
+    const before = track[Math.max(0, index - 1)];
+    const after = track[Math.min(track.length - 1, index + 2)];
     const result = { time };
     for (const key of ['x', 'y', 'width', 'height']) {
+      if (track === cameraTrack && a.time >= 3.75) {
+        result[key] = lerp(a[key], b[key], u);
+        continue;
+      }
       const slopeA = (b[key] - before[key]) / (b.time - before.time);
       const slopeB = (after[key] - a[key]) / (after.time - a.time);
       const duration = b.time - a.time;
@@ -111,7 +126,7 @@
     }
     return result;
   };
-  function draw() {
+  function draw(now = performance.now()) {
     frame = 0;
     if (!cinematic || stopped()) return;
     const travel = Math.abs(window.scrollY - lastY) / Math.max(1, window.innerHeight);
@@ -121,10 +136,18 @@
     const zoomProgress = ramp(position, introShare, 1);
     // 元動画の時間を均等に進める。スクロール量が同じなら接近する秒数も同じ。
     const targetTime = 4 * ramp(zoomProgress, cameraStart, cameraEnd);
-    if (video.readyState >= 2 && Math.abs(video.currentTime - targetTime) > 1 / 60) {
+    if (video.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - targetTime) > 1 / 60) {
       video.currentTime = targetTime;
     }
-    const filmTime = clamp((video.requestVideoFrameCallback ? renderedTime : video.currentTime) / 4) * 4;
+    // 元動画の24fpsは保ち、コマ間の接近だけを合成レイヤーで補間する。
+    // デコードが遅いときも1コマ以上先へ画像を引き伸ばさない。
+    const elapsed = lastDrawAt ? Math.min(64, now - lastDrawAt) : 16;
+    lastDrawAt = now;
+    const availableTime = Math.max(renderedTime - 1 / 24, Math.min(renderedTime + 1 / 24, targetTime));
+    presentationTime = lerp(presentationTime, availableTime, 1 - Math.exp(-elapsed / 65));
+    presentationTime = Math.max(renderedTime - 1 / 24, Math.min(renderedTime + 1 / 24, presentationTime));
+    if (Math.abs(presentationTime - availableTime) < .0001) presentationTime = availableTime;
+    const filmTime = clamp(presentationTime / 4) * 4;
     // 4秒へのシークでも最終表示コマが3.958秒になるデコーダがあるため、1コマ分の余裕を持たせる。
     const filmFinished = ease(ramp(filmTime, 3.65, 3.94));
     const finalZoom = 1 + .11 * ease(ramp(zoomProgress, .82, .94)) * filmFinished;
@@ -133,24 +156,24 @@
     const width = stageBox.width;
     const height = stageBox.height;
     // 固定演出中の次章はまだ画面下にあるため、受け渡し時の位置を基準にする。
-    const remainingTravel = Math.max(0, consultation.getBoundingClientRect().top - stageBox.top);
-    const textTargets = portalText.map(({ real }) => {
-      const style = getComputedStyle(real);
-      return {box:real.getBoundingClientRect(),size:parseFloat(style.fontSize),line:parseFloat(style.lineHeight),spacing:parseFloat(style.letterSpacing)||0};
-    });
-    const photoBox = consultPhoto.getBoundingClientRect();
-    const photoCorners = getComputedStyle(consultPhoto.parentElement).borderRadius.split(' ').map(parseFloat);
     const narrow = window.matchMedia('(max-width: 760px)').matches;
     const roomLeft = width * (narrow ? .24 : .54) * (1 - roomExpansion);
     const roomTop = height * (narrow ? .47 : .08) * (1 - roomExpansion);
     const roomWidth = width * lerp(narrow ? .76 : .43, 1, roomExpansion);
     const roomHeight = height * lerp(narrow ? .39 : .77, 1, roomExpansion);
-    const screen = screenAt(filmTime);
+    const screen = screenAt(filmTime, cameraTrack);
+    const decodedScreen = screenAt(renderedTime);
     const videoScale = Math.max(roomWidth / 1280, roomHeight / 720);
     const filmEndX = Number.parseFloat(getComputedStyle(room).getPropertyValue('--film-end-x')) || .8;
     const filmX = filmEndX;
     const videoLeft = -(1280 * videoScale - roomWidth) * filmX;
     const videoTop = (roomHeight - 720 * videoScale) / 2;
+    const filmScaleX = screen.width / decodedScreen.width;
+    const filmScaleY = screen.height / decodedScreen.height;
+    const filmTranslateX = videoLeft + screen.x * videoScale - (videoLeft + decodedScreen.x * videoScale) * filmScaleX;
+    const filmTranslateY = videoTop + screen.y * videoScale - (videoTop + decodedScreen.y * videoScale) * filmScaleY;
+    const edge = filmPadding * 1280 / Math.max(1, video.videoWidth) * videoScale;
+    const surfaceLeft = videoLeft - edge, surfaceTop = videoTop - edge;
     // 映像の画面位置に実HTMLを貼る。最後の約11%だけ写真とHTMLを一緒に等比拡大する。
     // 終点の組版を最初からPC内に固定する。動くのは画面全体だけ。
     const endScreen = screenAt(4), endVideoScale = Math.max(width / 1280, height / 720);
@@ -159,6 +182,22 @@
     const endX = width + (endVideoLeft + endScreen.x * endVideoScale - width) * 1.11;
     const endY = height / 2 + (endVideoTop + endScreen.y * endVideoScale - height / 2) * 1.11;
     const endScale = endScreen.width * endVideoScale * 1.11 / portalSize.width;
+    const layoutSize = `${width}:${height}:${filmX}`;
+    let layout = null;
+    if (portalLayoutDirty || portalLayoutSize !== layoutSize) {
+      const consultationTop = consultation.getBoundingClientRect().top;
+      layout = {
+        consultationTop,
+        text: portalText.map(({ real }) => {
+          const style = getComputedStyle(real);
+          return {box:real.getBoundingClientRect(),size:parseFloat(style.fontSize),line:parseFloat(style.lineHeight),spacing:parseFloat(style.letterSpacing)||0};
+        }),
+        photo: consultPhoto.getBoundingClientRect(),
+        corners: getComputedStyle(consultPhoto.parentElement).borderRadius.split(' ').map(parseFloat),
+      };
+      portalLayoutDirty = false;
+      portalLayoutSize = layoutSize;
+    }
     // 最終コマが1コマ手前で止まるブラウザでも、枠が消えた後の受け渡し位置を一致させる。
     const settle = ease(ramp(zoomProgress, .88, .94)) * filmFinished;
     const x = lerp(roomLeft + roomWidth + (videoLeft + screen.x * videoScale - roomWidth) * finalZoom,endX,settle);
@@ -196,27 +235,37 @@
     root.style.setProperty('--bottom-reveal', (ease(ramp(zoomProgress, .97, 1)) * filmFinished).toFixed(4));
     room.style.setProperty('--film-position', `${(filmX * 100).toFixed(2)}%`);
     room.style.transform = `scale(${finalZoom.toFixed(4)})`;
+    filmSurface.style.width = `${1280 * videoScale + edge * 2}px`;
+    filmSurface.style.height = `${720 * videoScale + edge * 2}px`;
+    filmSurface.style.left = `${surfaceLeft}px`;
+    filmSurface.style.top = `${surfaceTop}px`;
+    filmSurface.style.transformOrigin = `${-surfaceLeft}px ${-surfaceTop}px`;
+    filmSurface.style.transform = `matrix(${filmScaleX.toFixed(6)}, 0, 0, ${filmScaleY.toFixed(6)}, ${filmTranslateX.toFixed(3)}, ${filmTranslateY.toFixed(3)})`;
     preview.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${portalScale.toFixed(5)})`;
     preview.style.height = `${portalHeight.toFixed(2)}px`;
     preview.style.visibility = 'visible';
-    const placeContent = (element,box) => {
-      element.style.left = `${((box.left - stageBox.left - endX) / endScale).toFixed(2)}px`;
-      element.style.top = `${((box.top - remainingTravel - stageBox.top - endY) / endScale).toFixed(2)}px`;
-      element.style.width = `${(box.width / endScale).toFixed(2)}px`;
-    };
-    portalText.forEach(({ screen }, index) => {
-      const target = textTargets[index];
-      placeContent(screen,target.box);
-      // 小さい表示面の端数丸めで、短い札や本文末尾が意図せず折り返されるのを防ぐ。
-      screen.style.width = `${(target.box.width / endScale + 1).toFixed(4)}px`;
-      screen.style.fontSize = `${(target.size / endScale).toFixed(4)}px`;
-      screen.style.lineHeight = `${(target.line / endScale).toFixed(4)}px`;
-      screen.style.letterSpacing = `${(target.spacing / endScale).toFixed(4)}px`;
-    });
-    placeContent(screenPhoto,photoBox);
-    screenPhoto.style.height = `${(photoBox.height / endScale).toFixed(2)}px`;
-    screenPhoto.style.borderRadius = photoCorners.map(value=>`${(value / endScale).toFixed(2)}px`).join(' ');
+    // PC画面内の組版は、サイズやフォントが変わったときだけ更新する。
+    if (layout) {
+      const placeContent = (element,box) => {
+        element.style.left = `${((box.left - stageBox.left - endX) / endScale).toFixed(2)}px`;
+        element.style.top = `${((box.top - layout.consultationTop - endY) / endScale).toFixed(2)}px`;
+        element.style.width = `${(box.width / endScale).toFixed(2)}px`;
+      };
+      portalText.forEach(({ screen }, index) => {
+        const target = layout.text[index];
+        placeContent(screen,target.box);
+        // 小さい表示面の端数丸めで、短い札や本文末尾が意図せず折り返されるのを防ぐ。
+        screen.style.width = `${(target.box.width / endScale + 1).toFixed(4)}px`;
+        screen.style.fontSize = `${(target.size / endScale).toFixed(4)}px`;
+        screen.style.lineHeight = `${(target.line / endScale).toFixed(4)}px`;
+        screen.style.letterSpacing = `${(target.spacing / endScale).toFixed(4)}px`;
+      });
+      placeContent(screenPhoto,layout.photo);
+      screenPhoto.style.height = `${(layout.photo.height / endScale).toFixed(2)}px`;
+      screenPhoto.style.borderRadius = layout.corners.map(value=>`${(value / endScale).toFixed(2)}px`).join(' ');
+    }
     lastY = window.scrollY;
+    if (Math.abs(presentationTime - availableTime) >= .0001) schedule();
   }
   function schedule() {
     if (!frame && !document.hidden && cinematic && !stopped()) frame = requestAnimationFrame(draw);
@@ -224,6 +273,7 @@
   function cancelFrame() {
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
+    lastDrawAt = 0;
   }
   function enableCinema() {
     if (cinematic) return;
@@ -231,6 +281,7 @@
     root.classList.add('cinematic');
   }
   function syncMotion() {
+    portalLayoutDirty = true;
     const wasMoving = cinematic && !root.classList.contains('motion-paused');
     const willMove = !stopped();
     const wasUserPaused = root.classList.contains('motion-user-paused');
@@ -275,19 +326,35 @@
     button.disabled = reduced.matches;
     label.textContent = reduced.matches ? '動きを抑制中' : paused ? '動きを再開' : '動きを止める';
     button.title = reduced.matches ? '端末の「動きを減らす」設定を優先しています' : '';
-    if (stopped()) cancelFrame(); else schedule();
+    if (stopped()) cancelFrame();
+    else {
+      schedule();
+      if (hasVideoFrames && !video.seeking) recoverFilmFrame();
+    }
   }
   function paintFilm(time) {
     if (disposed || !filmContext || video.readyState < 2) return;
+    const frameNumber = Math.floor(time * 24 + .0001);
+    if (frameNumber === paintedFrame) return;
     try {
       // 表示位置の基準は1280×720のまま、描画面だけを動画の原寸へ合わせる。
       // 高解像度の動画を差し替えても、ここで720pへ落とさない。
-      if (filmSurface.width !== video.videoWidth || filmSurface.height !== video.videoHeight) {
-        filmSurface.width = video.videoWidth;
-        filmSurface.height = video.videoHeight;
+      const width = video.videoWidth, height = video.videoHeight;
+      const pad = Math.ceil(width / 30);
+      if (filmSurface.width !== width + pad * 2 || filmSurface.height !== height + pad * 2) {
+        filmSurface.width = width + pad * 2;
+        filmSurface.height = height + pad * 2;
+        filmPadding = pad;
+        filmSurface.dataset.framePadding = String(pad);
       }
-      filmContext.drawImage(video, 0, 0, filmSurface.width, filmSurface.height);
+      // 元の4K画素は等倍のまま中央へ。補間で露出し得る外周だけ同じコマの端を延ばす。
+      filmContext.drawImage(video, pad, pad, width, height);
+      filmContext.drawImage(filmSurface, pad, pad, 1, height, 0, pad, pad, height);
+      filmContext.drawImage(filmSurface, pad + width - 1, pad, 1, height, pad + width, pad, pad, height);
+      filmContext.drawImage(filmSurface, 0, pad, filmSurface.width, 1, 0, 0, filmSurface.width, pad);
+      filmContext.drawImage(filmSurface, 0, pad + height - 1, filmSurface.width, 1, 0, pad + height, filmSurface.width, pad);
       renderedTime = time;
+      paintedFrame = frameNumber;
       room.classList.add('frame-painted');
     } catch {
       failFilm();
@@ -313,8 +380,25 @@
     // playの準備中にpauseすると、Safariで最初の描画前に中断される場合がある。
     if (!filmPriming) readyFilm();
   });
+  function recoverFilmFrame() {
+    const settledTime = video.currentTime;
+    clearTimeout(frameRecovery);
+    frameRecovery = setTimeout(() => {
+      if (disposed || stopped() || video.seeking || Math.abs(video.currentTime - settledTime) > .001) return;
+      paintFilm(Math.floor(settledTime * 24 + .0001) / 24);
+      schedule();
+    }, 120);
+  }
+  video.addEventListener('seeking', () => clearTimeout(frameRecovery));
   video.addEventListener('seeked', () => {
-    paintFilm(video.currentTime);
+    // rVFC対応時は実際に表示されたコマだけを正本にする。
+    // seekedの要求時刻で上書きすると、同じコマの文字が前後へ揺れる。
+    if (!hasVideoFrames) paintFilm(video.currentTime);
+    else {
+      // Chromeでは一時停止直後のシークで通知が省かれる場合がある。
+      // 通常の通知を待ち、未描画のコマだけ救済して二重描画を避ける。
+      recoverFilmFrame();
+    }
     schedule();
   });
   video.addEventListener('timeupdate', () => {
@@ -372,6 +456,7 @@
   window.addEventListener('pagehide', event => {
     if (event.persisted) return;
     disposed = true;
+    clearTimeout(frameRecovery);
     video.pause();
     document.removeEventListener('touchend', primeFilm);
     document.removeEventListener('click', primeFilm);
@@ -387,11 +472,14 @@
     schedule();
   }
   window.addEventListener('pageshow', event => { if (event.persisted) onScroll(); });
-  if (video.requestVideoFrameCallback) {
+  if (hasVideoFrames) {
     const onFilmFrame = (_, metadata) => {
       if (disposed) return;
-      paintFilm(metadata.mediaTime);
-      if (filmPriming && metadata.mediaTime > 0) readyFilm();
+      // シーク後に遅れて届いた古い通知では、救済済みの映像を巻き戻さない。
+      if (Math.abs(metadata.mediaTime - video.currentTime) <= 1 / 24 + .002) {
+        paintFilm(metadata.mediaTime);
+        if (filmPriming && metadata.mediaTime > 0) readyFilm();
+      }
       schedule();
       video.requestVideoFrameCallback(onFilmFrame);
     };
@@ -415,7 +503,14 @@
   });
   loadFilm();
   window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', schedule);
+  const invalidatePortalLayout = () => { portalLayoutDirty = true; schedule(); };
+  window.addEventListener('resize', invalidatePortalLayout);
+  if ('ResizeObserver' in window) {
+    const layoutObserver = new ResizeObserver(invalidatePortalLayout);
+    [stage, consultation, consultPhoto, ...portalText.map(({ real }) => real)].forEach(element => layoutObserver.observe(element));
+    window.addEventListener('pagehide', event => { if (!event.persisted) layoutObserver.disconnect(); });
+  }
+  document.fonts?.ready.then(invalidatePortalLayout);
   document.addEventListener('visibilitychange', () => document.hidden ? cancelFrame() : schedule());
   syncMotion();
   if (hasSample && !stopped()) requestAnimationFrame(() => {
