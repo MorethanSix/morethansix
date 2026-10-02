@@ -18,7 +18,7 @@ for(const width of [1440,390]){
   const callback=HTMLVideoElement.prototype.requestVideoFrameCallback;
   if(callback)HTMLVideoElement.prototype.requestVideoFrameCallback=function(fn){return callback.call(this,(now,meta)=>{audit.source=meta.mediaTime;try{fn(now,meta);}finally{audit.source=null;}});};
   const draw=CanvasRenderingContext2D.prototype.drawImage;
-  CanvasRenderingContext2D.prototype.drawImage=function(...args){const value=draw.apply(this,args);if(this.canvas.classList.contains('opening-film-surface')&&args[0] instanceof HTMLVideoElement)audit.paints.push({at:performance.now(),current:args[0].currentTime,media:audit.source});return value;};
+  CanvasRenderingContext2D.prototype.drawImage=function(...args){const value=draw.apply(this,args);if((this.canvas.classList.contains('opening-film-surface')||this.canvas.classList.contains('opening-film-source'))&&args[0] instanceof HTMLVideoElement&&args.length===5)audit.paints.push({at:performance.now(),current:args[0].currentTime,media:audit.source});return value;};
  });
  const item={width,checks:[],metrics:{}};
  const check=(name,fn)=>{try{fn();item.checks.push({name,pass:true});}catch(e){item.checks.push({name,pass:false,error:e.message});}};
@@ -45,12 +45,13 @@ for(const width of [1440,390]){
   const reversal=(samples,key,sign,epsilon)=>samples.slice(2,-2).filter((s,i)=>sign*(s[key]-samples[i+1][key]) < -epsilon);
   const samples=[...forward,...backward],moving=motion.phases.flatMap(p=>p.samples.slice(3,-3).map((s,i)=>Math.abs(s.scale-p.samples[i+2].scale)>1e-6));
   const edgeGaps=samples.map(s=>s.edgeGap);
-  item.metrics={scaleReversals:reversal(forward,'scale',1,.0002).length+reversal(backward,'scale',-1,.0002).length,textReversals:reversal(forward,'x',-1,.35).length+reversal(backward,'x',1,.35).length,seekCount:motion.seeks.length,overlapSeeks:motion.seeks.filter(s=>s.busy).length,paintCount:motion.paints.length,unsyncedPaints:motion.paints.filter(p=>p.media===null).length,movingRatio:moving.filter(Boolean).length/moving.length,maxEdgeGap:Math.max(...edgeGaps)};
+  const sourceFrame=p=>Math.floor((p.media??p.current)*24+.0001);
+  item.metrics={scaleReversals:reversal(forward,'scale',1,.0002).length+reversal(backward,'scale',-1,.0002).length,textReversals:reversal(forward,'x',-1,.35).length+reversal(backward,'x',1,.35).length,seekCount:motion.seeks.length,overlapSeeks:motion.seeks.filter(s=>s.busy).length,paintCount:motion.paints.length,fallbackPaints:motion.paints.filter(p=>p.media===null).length,duplicatePaints:motion.paints.slice(1).filter((p,i)=>sourceFrame(p)===sourceFrame(motion.paints[i])).length,movingRatio:moving.filter(Boolean).length/moving.length,maxEdgeGap:Math.max(...edgeGaps)};
   check('4Kの描画を維持',()=>assert.deepEqual(motion.size,[3840,2160]));
   check('一方向のスクロール中に拡大率が逆戻りしない',()=>assert.equal(item.metrics.scaleReversals,0));
   check('文字が左右に行き戻りしない',()=>assert.equal(item.metrics.textReversals,0));
   check('デコード中のシークを上書きしない',()=>assert.equal(item.metrics.overlapSeeks,0));
-  check('コマの通知以外で4Kを重複描画しない',()=>assert.equal(item.metrics.unsyncedPaints,0));
+  check('通知欠落の救済を含め同じコマを連続で重複描画しない',()=>assert.equal(item.metrics.duplicatePaints,0));
   check('拡大が表示更新の75%以上で連続する',()=>assert.ok(item.metrics.movingRatio>.75,String(item.metrics.movingRatio)));
   check('補間中に画面端が露出しない',()=>assert.ok(item.metrics.maxEdgeGap<1,String(item.metrics.maxEdgeGap)));
   check('ブラウザ例外なし',()=>assert.deepEqual(errors,[]));

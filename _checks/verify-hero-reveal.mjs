@@ -15,16 +15,18 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
  const check=(name,fn)=>{try{fn();results.push({width,name,pass:true});}catch(e){results.push({width,name,pass:false,error:e.message});}};
  try{
   await page.goto(base);
-  const revision=base.startsWith('https:')?'20261002-hero6':'20261002-hero7';
+  const revision=base.startsWith('https:')?'20261002-hero6':'20261003-hero9';
   if(label!=='baseline')assert.equal(await page.locator(`script[src="site.js?v=${revision}"]`).count(),1);
   await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
   await page.evaluate(()=>document.fonts.ready);
   async function at(fraction){
    await page.evaluate(f=>{const s=document.querySelector('.opening'),h=document.querySelector('.header').offsetHeight;scrollTo({top:scrollY+s.getBoundingClientRect().top-h+(s.offsetHeight-innerHeight+h)*f+(f===1?2:0),behavior:'instant'});},fraction);
-   await page.evaluate(async()=>{let last=-1,same=0;for(let i=0;i<180;i++){await new Promise(requestAnimationFrame);const v=document.querySelector('.opening-film');same=!v.seeking&&v.currentTime===last?same+1:0;last=v.currentTime;if(same>=5)return;}throw new Error('映像が安定しない');});
+   // 動画のコマが止まった後も表示位置は補間するため、両方の収束を待つ。
+   await page.evaluate(async()=>{let last='',same=0;for(let i=0;i<180;i++){await new Promise(requestAnimationFrame);const v=document.querySelector('.opening-film'),p=document.querySelector('.opening-preview'),state=`${v.currentTime}:${p.style.transform}`;same=!v.seeking&&state===last?same+1:0;last=state;if(same>=5)return;}throw new Error('映像と表示位置が安定しない');});
    return page.evaluate(()=>{
-    const v=document.querySelector('.opening-film'),p=document.querySelector('.opening-preview'),b=p.getBoundingClientRect(),photo=p.querySelector('img'),r=photo?.getBoundingClientRect();
-    return {time:v.currentTime,scrollY,ink:+getComputedStyle(document.querySelector('.opening-screen-card')).opacity,logo:+document.querySelector('.opening').style.getPropertyValue('--next'),paper:+document.querySelector('.opening').style.getPropertyValue('--portal-white'),photo:!!photo&&photo.complete&&photo.naturalWidth>0,photoInk:photo?+getComputedStyle(photo).opacity:0,photoFilter:photo?getComputedStyle(photo).filter:'',photoBox:photo?[photo.offsetLeft,photo.offsetTop,photo.offsetWidth,photo.offsetHeight]:[],photoClipped:r?r.bottom>b.bottom:false,photoPeek:r?Math.min(r.bottom,b.bottom)-Math.max(r.top,b.top):0,text:[...p.querySelectorAll('.screen-kicker,.screen-with,strong,.screen-detail')].map(e=>({x:e.offsetLeft,y:e.offsetTop,size:parseFloat(getComputedStyle(e).fontSize)}))};
+    const v=document.querySelector('.opening-film'),s=document.querySelector('.opening'),h=document.querySelector('.header').offsetHeight,p=document.querySelector('.opening-preview'),b=p.getBoundingClientRect(),photo=p.querySelector('img'),r=photo?.getBoundingClientRect();
+    const travel=s.offsetHeight-innerHeight+h,travelUnit=1.5*innerHeight+h,previewScale=new DOMMatrixReadOnly(getComputedStyle(p).transform).a;
+    return {time:v.currentTime,scrollY,travel,travelUnit,travelShare:+s.style.getPropertyValue('--travel-share'),previewScale,ink:+getComputedStyle(document.querySelector('.opening-screen-card')).opacity,logo:+document.querySelector('.opening').style.getPropertyValue('--next'),paper:+document.querySelector('.opening').style.getPropertyValue('--portal-white'),photo:!!photo&&photo.complete&&photo.naturalWidth>0,photoInk:photo?+getComputedStyle(photo).opacity:0,photoFilter:photo?getComputedStyle(photo).filter:'',photoBox:photo?[photo.offsetLeft,photo.offsetTop,photo.offsetWidth,photo.offsetHeight]:[],photoClipped:r?r.bottom>b.bottom:false,photoPeek:r?Math.min(r.bottom,b.bottom)-Math.max(r.top,b.top):0,text:[...p.querySelectorAll('.screen-kicker,.screen-with,strong,.screen-detail')].map(e=>({x:e.offsetLeft,y:e.offsetTop,size:parseFloat(getComputedStyle(e).fontSize)}))};
    });
   }
   async function time(t){let lo=0,hi=1,state;for(let n=0;n<11;n++){const mid=(lo+hi)/2;state=await at(mid);if(state.time<t)lo=mid;else hi=mid;}return at((lo+hi)/2);}
@@ -42,7 +44,20 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
   check('接近に従って文字が濃くなる',()=>assert.ok(early.ink<middle.ink&&middle.ink<late.ink&&late.ink>.95));
   check('画面内の文字組版が動かない',()=>{for(let n=0;n<early.text.length;n++)for(const k of ['x','y','size'])assert.ok(Math.abs(early.text[n][k]-late.text[n][k])<1.1,`${n}:${k}`);});
   check('画面内の写真も位置と形を保つ',()=>{assert.equal(early.photoBox.length,4);early.photoBox.forEach((v,i)=>assert.ok(Math.abs(v-late.photoBox[i])<1.1));});
-  check('動画の秒数とスクロールの進みが均等でゆっくり',()=>{const a=(middle.scrollY-early.scrollY)/(middle.time-early.time),b=(late.scrollY-middle.scrollY)/(late.time-middle.time);assert.ok(a>height*.7&&b>height*.7);assert.ok(Math.abs(a-b)/a<.03);});
+  // 新仕様は動画秒数でなく、見えているPC画面の倍率を等速に進める。
+  // 24fpsのシーク時刻は変動しても、固定スクロール位置のpreview倍率は比較できる。
+  const uniform=[];for(const fraction of [.40,.60,.80])uniform.push(await at(fraction));
+  check('等距離スクロールでPC画面の対数倍率が一定',()=>{
+   const a=Math.log(uniform[1].previewScale/uniform[0].previewScale),b=Math.log(uniform[2].previewScale/uniform[1].previewScale);
+   const difference=Math.abs(a-b)/((Math.abs(a)+Math.abs(b))/2);
+   assert.ok(a>0&&b>0&&difference<.03,JSON.stringify({a,b,difference,uniform:uniform.map(s=>[s.scrollY,s.previewScale])}));
+  });
+  check('接近に必要なスクロール距離が前仕様の約81%になる',()=>{
+   const previous=.36+.64/.25,current=.36+.64/.32,ratio=current/previous;
+   assert.ok(Math.abs(uniform[0].travelShare-current)<.0001,JSON.stringify(uniform[0]));
+   assert.ok(Math.abs(ratio-.808219178)<.001,JSON.stringify({previous,current,ratio}));
+   assert.ok(Math.abs(uniform[0].travel/uniform[0].travelUnit-current)<.02,JSON.stringify(uniform[0]));
+  });
   if(label==='photo'){
    const faint=await time(2.65);await page.screenshot({path:out+width+'-photo-faint.png'});
    const half=await time(3.3);await page.screenshot({path:out+width+'-photo-half.png'});

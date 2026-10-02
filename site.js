@@ -17,6 +17,10 @@
   filmSurface.style.willChange = 'transform';
   room.appendChild(filmSurface);
   const filmContext = filmSurface.getContext('2d', { alpha: false });
+  // コマを一度だけ取得し、周辺の補間に同じ画像を再利用する。
+  const filmSource = document.createElement('canvas');
+  filmSource.className = 'opening-film-source';
+  const filmSourceContext = filmSource.getContext('2d', { alpha: false });
   const preview = document.querySelector('.opening-preview');
   const consultation = document.querySelector('main > .consultation');
   const consultPhoto = consultation.querySelector('.consult-photo img');
@@ -33,9 +37,9 @@
   const ramp = (value, start, end) => clamp((value - start) / (end - start));
   const ease = value => value * value * (3 - 2 * value);
   const lerp = (from, to, amount) => from + (to - from) * amount;
-  // 接近全体に十分なスクロール距離を取り、後半だけ加速させない。
+  // 接近は元の構図を保ち、見た目の拡大率で一定のテンポへ進める。
   const introShare = .36;
-  const cameraSpeed = .25;
+  const cameraSpeed = .32;
   const cameraStart = .08;
   const cameraEnd = .82;
   const logoFadeEnd = 2.8;
@@ -78,6 +82,7 @@
   let frameRecovery = 0;
   let filmPadding = 0;
   let presentationTime = 0;
+  let presentationZoom = 0;
   let lastDrawAt = 0;
   const hasVideoFrames = typeof video.requestVideoFrameCallback === 'function';
   let portalLayoutDirty = true;
@@ -126,28 +131,51 @@
     }
     return result;
   };
-  function draw(now = performance.now()) {
-    frame = 0;
+  const zoomRatio = Math.log(cameraTrack.at(-1).width / cameraTrack[0].width);
+  const timeAtZoom = amount => {
+    if (amount <= 0) return 0;
+    if (amount >= 1) return 4;
+    const width = cameraTrack[0].width * Math.exp(zoomRatio * amount);
+    let low = 0, high = 4;
+    // 映像の後半ほど強い拡大を、同じスクロール量で同じ倍率になる時間へ引き直す。
+    for (let i = 0; i < 18; i += 1) {
+      const middle = (low + high) / 2;
+      if (screenAt(middle, cameraTrack).width < width) low = middle;
+      else high = middle;
+    }
+    return (low + high) / 2;
+  };
+  function draw(now = performance.now(), composeFrameOnly = false) {
+    if (!composeFrameOnly) frame = 0;
     if (!cinematic || stopped()) return;
     const travel = Math.abs(window.scrollY - lastY) / Math.max(1, window.innerHeight);
     offset *= Math.max(0, 1 - travel * 2);
     position = hasSample ? samples[sampleName] : clamp(progress() + offset);
     const roomExpansion = ease(ramp(position, .02, .25));
     const zoomProgress = ramp(position, introShare, 1);
-    // 元動画の時間を均等に進める。スクロール量が同じなら接近する秒数も同じ。
-    const targetTime = 4 * ramp(zoomProgress, cameraStart, cameraEnd);
-    if (video.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - targetTime) > 1 / 60) {
-      video.currentTime = targetTime;
+    const targetZoom = ramp(zoomProgress, cameraStart, cameraEnd);
+    const targetTime = timeAtZoom(targetZoom);
+    const jumped = Math.abs(targetTime - presentationTime) > .5;
+    if (jumped) {
+      // 大きなページ移動では旧コマを無理に引き伸ばさず、到着コマと一緒に切り替える。
+      if (video.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - targetTime) > 1 / 60) video.currentTime = targetTime;
+      if (Math.abs(renderedTime - targetTime) > 1 / 24 + .002) { lastDrawAt = 0; return; }
+      presentationTime = targetTime;
+      presentationZoom = targetZoom;
     }
     // 元動画の24fpsは保ち、コマ間の接近だけを合成レイヤーで補間する。
-    // デコードが遅いときも1コマ以上先へ画像を引き伸ばさない。
-    const elapsed = lastDrawAt ? Math.min(64, now - lastDrawAt) : 16;
-    lastDrawAt = now;
-    const availableTime = Math.max(renderedTime - 1 / 24, Math.min(renderedTime + 1 / 24, targetTime));
-    presentationTime = lerp(presentationTime, availableTime, 1 - Math.exp(-elapsed / 65));
-    presentationTime = Math.max(renderedTime - 1 / 24, Math.min(renderedTime + 1 / 24, presentationTime));
-    if (Math.abs(presentationTime - availableTime) < .0001) presentationTime = availableTime;
+    // デコードの更新間隔を表示へ伝えず、画面全体をスクロール目標へ追従させる。
+    if (!composeFrameOnly) {
+      const elapsed = lastDrawAt ? Math.max(0, Math.min(64, now - lastDrawAt)) : 16;
+      lastDrawAt = now;
+      presentationZoom = lerp(presentationZoom, targetZoom, 1 - Math.exp(-elapsed / 65));
+      if (Math.abs(presentationZoom - targetZoom) < .00001) presentationZoom = targetZoom;
+      presentationTime = timeAtZoom(presentationZoom);
+    }
     const filmTime = clamp(presentationTime / 4) * 4;
+    // 表示の時計に合わせ、同一の24fpsコマへの不要な再シークを送らない。
+    const seekTime = Math.min(4, Math.round(filmTime * 24) / 24 + .001);
+    if (!composeFrameOnly && video.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - seekTime) > .001) video.currentTime = seekTime;
     // 4秒へのシークでも最終表示コマが3.958秒になるデコーダがあるため、1コマ分の余裕を持たせる。
     const filmFinished = ease(ramp(filmTime, 3.65, 3.94));
     const finalZoom = 1 + .11 * ease(ramp(zoomProgress, .82, .94)) * filmFinished;
@@ -265,7 +293,7 @@
       screenPhoto.style.borderRadius = layout.corners.map(value=>`${(value / endScale).toFixed(2)}px`).join(' ');
     }
     lastY = window.scrollY;
-    if (Math.abs(presentationTime - availableTime) >= .0001) schedule();
+    if (presentationZoom !== targetZoom) schedule();
   }
   function schedule() {
     if (!frame && !document.hidden && cinematic && !stopped()) frame = requestAnimationFrame(draw);
@@ -333,29 +361,42 @@
     }
   }
   function paintFilm(time) {
-    if (disposed || !filmContext || video.readyState < 2) return;
+    if (disposed || !filmContext || !filmSourceContext || video.readyState < 2) return;
     const frameNumber = Math.floor(time * 24 + .0001);
     if (frameNumber === paintedFrame) return;
     try {
       // 表示位置の基準は1280×720のまま、描画面だけを動画の原寸へ合わせる。
       // 高解像度の動画を差し替えても、ここで720pへ落とさない。
       const width = video.videoWidth, height = video.videoHeight;
-      const pad = Math.ceil(width / 30);
+      // 逆方向の補間と通知救済の待機を含む約2コマ分の端を確保する。
+      const pad = Math.ceil(width / 20);
       if (filmSurface.width !== width + pad * 2 || filmSurface.height !== height + pad * 2) {
+        filmSource.width = width;
+        filmSource.height = height;
         filmSurface.width = width + pad * 2;
         filmSurface.height = height + pad * 2;
         filmPadding = pad;
         filmSurface.dataset.framePadding = String(pad);
       }
       // 元の4K画素は等倍のまま中央へ。補間で露出し得る外周だけ同じコマの端を延ばす。
-      filmContext.drawImage(video, pad, pad, width, height);
-      filmContext.drawImage(filmSurface, pad, pad, 1, height, 0, pad, pad, height);
-      filmContext.drawImage(filmSurface, pad + width - 1, pad, 1, height, pad + width, pad, pad, height);
-      filmContext.drawImage(filmSurface, 0, pad, filmSurface.width, 1, 0, 0, filmSurface.width, pad);
-      filmContext.drawImage(filmSurface, 0, pad + height - 1, filmSurface.width, 1, 0, pad + height, filmSurface.width, pad);
+      filmSourceContext.drawImage(video, 0, 0, width, height);
+      filmContext.drawImage(filmSource, pad, pad, width, height);
+      // 描画先を読み戻さず、固定したコマから端と四隅を埋める。
+      filmContext.drawImage(filmSource, 0, 0, 1, height, 0, pad, pad, height);
+      filmContext.drawImage(filmSource, width - 1, 0, 1, height, pad + width, pad, pad, height);
+      filmContext.drawImage(filmSource, 0, 0, width, 1, pad, 0, width, pad);
+      filmContext.drawImage(filmSource, 0, height - 1, width, 1, pad, pad + height, width, pad);
+      filmContext.drawImage(filmSource, 0, 0, 1, 1, 0, 0, pad, pad);
+      filmContext.drawImage(filmSource, width - 1, 0, 1, 1, pad + width, 0, pad, pad);
+      filmContext.drawImage(filmSource, 0, height - 1, 1, 1, 0, pad + height, pad, pad);
+      filmContext.drawImage(filmSource, width - 1, height - 1, 1, 1, pad + width, pad + height, pad, pad);
       renderedTime = time;
       paintedFrame = frameNumber;
       room.classList.add('frame-painted');
+      // コマだけを先に見せると古い変換と1画面分ずれるため、位置も同じ描画で更新する。
+      if (cinematic && !stopped()) {
+        draw(performance.now(), true);
+      }
     } catch {
       failFilm();
     }
@@ -387,7 +428,8 @@
       if (disposed || stopped() || video.seeking || Math.abs(video.currentTime - settledTime) > .001) return;
       paintFilm(Math.floor(settledTime * 24 + .0001) / 24);
       schedule();
-    }, 120);
+    // 通知が欠けても次のシークより先に救済し、古いコマの拡大が続くのを防ぐ。
+    }, 48);
   }
   video.addEventListener('seeking', () => clearTimeout(frameRecovery));
   video.addEventListener('seeked', () => {
@@ -434,7 +476,7 @@
   // Blob URLならRange非対応のローカルサーバーでも全コマへ正確にシークできる。
   const loadFilm = () => {
     if (filmLoading || filmReady || filmError || disposed || reduced.matches) return;
-    if (!filmContext) { failFilm(); return; }
+    if (!filmContext || !filmSourceContext) { failFilm(); return; }
     filmLoading = true;
     filmAbort = new AbortController();
     fetch(video.dataset.src, { signal: filmAbort.signal })
