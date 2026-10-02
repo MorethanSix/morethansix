@@ -15,7 +15,7 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
  const check=(name,fn)=>{try{fn();results.push({width,name,pass:true});}catch(e){results.push({width,name,pass:false,error:e.message});}};
  try{
   await page.goto(base);
-  if(label!=='baseline')assert.equal(await page.locator('script[src="site.js?v=20261002-hero5"]').count(),1);
+  if(label!=='baseline')assert.equal(await page.locator('script[src="site.js?v=20261002-hero6"]').count(),1);
   await page.waitForFunction(()=>document.documentElement.classList.contains('cinematic')&&!document.documentElement.classList.contains('motion-paused'));
   await page.evaluate(()=>document.fonts.ready);
   async function at(fraction){
@@ -29,6 +29,10 @@ for(const [width,height] of (label==='baseline'?[[1065,708]]:[[1065,708],[1440,9
   async function time(t){let lo=0,hi=1,state;for(let n=0;n<11;n++){const mid=(lo+hi)/2;state=await at(mid);if(state.time<t)lo=mid;else hi=mid;}return at((lo+hi)/2);}
   const early=await time(.02);await page.screenshot({path:out+width+'-early.png'});
   const middle=await time(2);await page.screenshot({path:out+width+'-middle.png'});
+  if(label!=='baseline'){
+   const pixels=await page.evaluate(()=>{const v=document.querySelector('.opening-film'),c=document.querySelector('.opening-film-surface'),p=document.querySelector('.opening-poster');return {video:[v.videoWidth,v.videoHeight],canvas:[c.width,c.height],poster:[p.naturalWidth,p.naturalHeight],duration:v.duration};});
+   check('4Kの動画と静止画を縮小せず描画する',()=>{for(const key of ['video','canvas','poster'])assert.deepEqual(pixels[key],[3840,2160]);assert.ok(Math.abs(pixels.duration-97/24)<.001);});
+  }
   const late=await time(3.4);await page.screenshot({path:out+width+'-late.png'});
   check('ロゴ場面から薄い本文と写真が見える',()=>{assert.equal(early.logo,1);assert.ok(early.ink>=.04&&early.ink<.3);assert.ok(early.photo&&early.photoPeek>1&&early.photoInk>.01&&early.photoInk<.1);
    // PCは下端から写真が見切れる。縦長端末では実本文と同じ固定配置で写真全体が収まる。

@@ -280,6 +280,12 @@
   function paintFilm(time) {
     if (disposed || !filmContext || video.readyState < 2) return;
     try {
+      // 表示位置の基準は1280×720のまま、描画面だけを動画の原寸へ合わせる。
+      // 高解像度の動画を差し替えても、ここで720pへ落とさない。
+      if (filmSurface.width !== video.videoWidth || filmSurface.height !== video.videoHeight) {
+        filmSurface.width = video.videoWidth;
+        filmSurface.height = video.videoHeight;
+      }
       filmContext.drawImage(video, 0, 0, filmSurface.width, filmSurface.height);
       renderedTime = time;
       room.classList.add('frame-painted');
