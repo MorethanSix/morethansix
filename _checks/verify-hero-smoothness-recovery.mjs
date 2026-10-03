@@ -26,6 +26,8 @@ for(const mode of ['normal','fallback','missing-callback']){
    const before=pixels(canvas);
    const sample=[];
    for(const f of [.78,.44,.81,.5]){
+    // 履歴復元などのページ単位の位置変更。操作入力の連打はverify-hero-inputで別検査。
+    dispatchEvent(new PopStateEvent('popstate'));
     scrollTo({top:start+span*f,behavior:'instant'});
     const end=performance.now()+650;
     while(performance.now()<end){await new Promise(requestAnimationFrame);const m=new DOMMatrixReadOnly(getComputedStyle(canvas).transform);sample.push({scaleX:m.a,scaleY:m.d,time:v.currentTime,seeking:v.seeking});}

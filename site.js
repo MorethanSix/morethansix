@@ -42,6 +42,7 @@
   const cameraSpeed = .32;
   const cameraStart = .08;
   const cameraEnd = .82;
+  const cameraResponse = 90;
   const logoFadeEnd = 2.8;
   const travelShare = introShare + (1 - introShare) / cameraSpeed;
   opening.style.setProperty('--travel-share', String(travelShare));
@@ -59,6 +60,113 @@
   ];
   // 終盤の1コマごとの測定揺れをカメラの軌道に持ち込まない。
   const cameraTrack = screenTrack.filter(point => point.time <= 3.75 || point.time === 4);
+  // 4K v4（SHA256 411989b7…）の各表示コマの画面内側。疎な9点補間では
+  // 元映像の4コマおきの加速が残るため、デコード済みコマだけ実測へ合わせる。
+  // 0〜87は青い表示面の実測。88以降の画面外の幅は直前12コマの縦横比、
+  // 95/96の画面外の高さは直前15コマの左端と高さの関係から推定した。
+  const decodedScreens = [
+    [930.667, 481.667, 208.667, 119.333], // 0
+    [929.333, 480.667, 210, 120], // 1
+    [928, 479.667, 211.333, 120.667], // 2
+    [926.667, 479, 213, 121.667], // 3
+    [924, 476.333, 216, 123], // 4
+    [922.333, 475.333, 217.667, 124], // 5
+    [921, 474.333, 219.333, 125], // 6
+    [919.333, 473.333, 221, 126], // 7
+    [916.333, 471, 224.333, 127.667], // 8
+    [914.667, 469.667, 226, 128.667], // 9
+    [913.333, 468.333, 227.667, 129.333], // 10
+    [911.667, 467, 229.667, 130.333], // 11
+    [908.333, 464.667, 233.333, 132.333], // 12
+    [906.667, 463.333, 235, 133.333], // 13
+    [905, 462, 237, 134.333], // 14
+    [903.333, 460.667, 238.667, 135.333], // 15
+    [900.333, 458, 242, 137.333], // 16
+    [898.333, 456.667, 244.333, 138.667], // 17
+    [896.333, 455.333, 246.333, 139.667], // 18
+    [894.333, 453.667, 248.667, 141], // 19
+    [890.667, 450.667, 252.667, 143.333], // 20
+    [888.333, 449, 255, 144.667], // 21
+    [886.333, 447.333, 257, 145.667], // 22
+    [884.333, 445.667, 259.333, 147.333], // 23
+    [880, 442.667, 264.333, 149.667], // 24
+    [877.333, 440.667, 267, 151.333], // 25
+    [875, 439, 269.667, 152.667], // 26
+    [872.667, 437.333, 272, 154], // 27
+    [868, 434, 277, 156.667], // 28
+    [865.333, 432, 280, 158.333], // 29
+    [863, 430, 282.667, 160], // 30
+    [860.333, 428, 285.667, 161.667], // 31
+    [855, 424.333, 291.333, 164.667], // 32
+    [851.667, 422, 295, 166.333], // 33
+    [849, 420, 298, 168.333], // 34
+    [846, 417.667, 301.333, 170.333], // 35
+    [840, 413.667, 308, 173.667], // 36
+    [836.667, 411.333, 311.667, 175.667], // 37
+    [833.333, 409, 315.333, 178], // 38
+    [830, 406.667, 319.333, 180], // 39
+    [823.333, 402.333, 326.667, 184], // 40
+    [819.667, 399.667, 330.667, 186.333], // 41
+    [816.333, 397, 334.667, 188.667], // 42
+    [812, 394.333, 339.333, 191], // 43
+    [805.333, 389.667, 347, 195.333], // 44
+    [801, 386.667, 352, 198.333], // 45
+    [797, 384, 356.667, 200.667], // 46
+    [792.667, 381.333, 361.667, 203.333], // 47
+    [784.667, 376, 370.667, 208.667], // 48
+    [780, 373, 376, 211.667], // 49
+    [775.333, 370, 381.333, 214.333], // 50
+    [770.667, 366.667, 386.667, 217.667], // 51
+    [762, 361, 396.667, 223.667], // 52
+    [756.667, 357.333, 403, 227.667], // 53
+    [751.333, 354.333, 409, 230.667], // 54
+    [746, 351, 415.333, 234.333], // 55
+    [735.333, 345, 427.667, 241], // 56
+    [729.333, 341, 435, 245.333], // 57
+    [723.333, 337.333, 442, 249.333], // 58
+    [717.667, 334, 448.667, 252.667], // 59
+    [705.667, 327.333, 463, 260.667], // 60
+    [699.333, 323, 470.667, 265.333], // 61
+    [693, 319.667, 478.333, 269.667], // 62
+    [686, 316.333, 486.667, 273.667], // 63
+    [672.667, 308.333, 502.667, 283], // 64
+    [665, 304, 512.333, 288.333], // 65
+    [657.667, 299.667, 521.333, 293.667], // 66
+    [650, 295.667, 530.667, 298.667], // 67
+    [633.667, 287, 550.667, 309.333], // 68
+    [626, 282, 560.667, 316], // 69
+    [617.333, 277.333, 571.333, 321.667], // 70
+    [608.333, 272.667, 582.667, 328], // 71
+    [590, 262.667, 606, 341], // 72
+    [580, 257.333, 619, 348.333], // 73
+    [570.333, 252, 631.333, 355.667], // 74
+    [560, 246.667, 644.667, 363], // 75
+    [538, 235, 672.333, 378.667], // 76
+    [526.333, 229.333, 687.667, 386.667], // 77
+    [514.333, 222.667, 703.333, 396], // 78
+    [502.333, 216.333, 719, 405], // 79
+    [476, 203.333, 753, 423.667], // 80
+    [461.333, 195.333, 772, 434.333], // 81
+    [447.667, 188.333, 790.333, 445.333], // 82
+    [432, 180.667, 810.333, 457], // 83
+    [400, 166, 852, 478.667], // 84
+    [382.667, 156.333, 875, 492.667], // 85
+    [364.667, 148, 899, 505.333], // 86
+    [346.667, 139.333, 923, 519], // 87
+    [307, 121.333, 971.613, 546.667], // 88
+    [287.333, 110, 1002.42, 564], // 89
+    [265, 99.667, 1030.265, 579.667], // 90
+    [243.333, 89.333, 1059.887, 596.333], // 91
+    [194, 67.333, 1121.502, 631], // 92
+    [168, 54.667, 1157.049, 651], // 93
+    [141.333, 42.333, 1193.188, 671.333], // 94
+    [114.667, 27.667, 1227.157, 690.446], // 95
+    [54, 0, 1306.776, 735.242] // 96
+  ];
+  const decodedScreenAt = time => {
+    const [x, y, width, height] = decodedScreens[Math.min(96, Math.max(0, Math.floor(time * 24 + .0001)))];
+    return { x, y, width, height };
+  };
   const portalSize = { width: 1000 };
   const portalText = [
     ['.screen-kicker', '.section-top .eyebrow'],
@@ -83,7 +191,9 @@
   let filmPadding = 0;
   let presentationTime = 0;
   let presentationZoom = 0;
+  let presentationVelocity = 0;
   let lastDrawAt = 0;
+  let navigationJump = false;
   const hasVideoFrames = typeof video.requestVideoFrameCallback === 'function';
   let portalLayoutDirty = true;
   let portalLayoutSize = '';
@@ -155,21 +265,32 @@
     const zoomProgress = ramp(position, introShare, 1);
     const targetZoom = ramp(zoomProgress, cameraStart, cameraEnd);
     const targetTime = timeAtZoom(targetZoom);
-    const jumped = Math.abs(targetTime - presentationTime) > .5;
-    if (jumped) {
-      // 大きなページ移動では旧コマを無理に引き伸ばさず、到着コマと一緒に切り替える。
+    // アンカー移動や復元だけは到着コマへ合わせる。利用者の連続操作中には
+    // 動画時刻の差が大きくなっても、この瞬間切替を使わない。
+    if (navigationJump && Math.abs(targetTime - presentationTime) > .5) {
       if (video.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - targetTime) > 1 / 60) video.currentTime = targetTime;
       if (Math.abs(renderedTime - targetTime) > 1 / 24 + .002) { lastDrawAt = 0; return; }
       presentationTime = targetTime;
       presentationZoom = targetZoom;
+      presentationVelocity = 0;
     }
+    navigationJump = false;
     // 元動画の24fpsは保ち、コマ間の接近だけを合成レイヤーで補間する。
     // デコードの更新間隔を表示へ伝えず、画面全体をスクロール目標へ追従させる。
     if (!composeFrameOnly) {
-      const elapsed = lastDrawAt ? Math.max(0, Math.min(64, now - lastDrawAt)) : 16;
+      const elapsed = lastDrawAt ? Math.max(0, Math.min(32, now - lastDrawAt)) : 16;
       lastDrawAt = now;
-      presentationZoom = lerp(presentationZoom, targetZoom, 1 - Math.exp(-elapsed / 65));
-      if (Math.abs(presentationZoom - targetZoom) < .00001) presentationZoom = targetZoom;
+      // 位置だけでなく速度も連続にする。入力が一度に増えても初速が跳ねず、
+      // 慣性入力・停止・逆方向のどれでも同じ減衰で目標へ近づく。
+      const decay = Math.exp(-elapsed / cameraResponse);
+      const error = presentationZoom - targetZoom;
+      const momentum = presentationVelocity + error / cameraResponse;
+      presentationZoom = targetZoom + (error + momentum * elapsed) * decay;
+      presentationVelocity = (presentationVelocity - momentum * elapsed / cameraResponse) * decay;
+      if (Math.abs(presentationZoom - targetZoom) < .00001 && Math.abs(presentationVelocity) < .000001) {
+        presentationZoom = targetZoom;
+        presentationVelocity = 0;
+      }
       presentationTime = timeAtZoom(presentationZoom);
     }
     const filmTime = clamp(presentationTime / 4) * 4;
@@ -190,7 +311,7 @@
     const roomWidth = width * lerp(narrow ? .76 : .43, 1, roomExpansion);
     const roomHeight = height * lerp(narrow ? .39 : .77, 1, roomExpansion);
     const screen = screenAt(filmTime, cameraTrack);
-    const decodedScreen = screenAt(renderedTime);
+    const decodedScreen = decodedScreenAt(renderedTime);
     const videoScale = Math.max(roomWidth / 1280, roomHeight / 720);
     const filmEndX = Number.parseFloat(getComputedStyle(room).getPropertyValue('--film-end-x')) || .8;
     const filmX = filmEndX;
@@ -293,7 +414,8 @@
       screenPhoto.style.borderRadius = layout.corners.map(value=>`${(value / endScale).toFixed(2)}px`).join(' ');
     }
     lastY = window.scrollY;
-    if (presentationZoom !== targetZoom) schedule();
+    if (presentationZoom !== targetZoom || presentationVelocity) schedule();
+    else lastDrawAt = 0;
   }
   function schedule() {
     if (!frame && !document.hidden && cinematic && !stopped()) frame = requestAnimationFrame(draw);
@@ -302,6 +424,7 @@
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
     lastDrawAt = 0;
+    presentationVelocity = 0;
   }
   function enableCinema() {
     if (cinematic) return;
@@ -337,6 +460,7 @@
     // 映像の準備完了・停止・端末設定変更のすべてで、後続の帯も新しい寸法へ合わせる。
     refreshProof();
     if ((wasMoving !== willMove || wasUserPaused !== userPaused) && anchor) {
+      navigationJump = true;
       if (wasMoving && anchor === opening) {
         window.scrollTo({ top: position < .5 ? 0 : Math.max(0, consultation.offsetTop - headerHeight()), behavior: 'instant' });
       } else {
@@ -513,7 +637,10 @@
     }
     schedule();
   }
-  window.addEventListener('pageshow', event => { if (event.persisted) onScroll(); });
+  window.addEventListener('pageshow', event => { if (event.persisted) { navigationJump = true; onScroll(); } });
+  const resetScrollSource = () => { navigationJump = true; schedule(); };
+  window.addEventListener('hashchange', resetScrollSource);
+  window.addEventListener('popstate', resetScrollSource);
   if (hasVideoFrames) {
     const onFilmFrame = (_, metadata) => {
       if (disposed) return;
@@ -544,6 +671,15 @@
     draw();
   });
   loadFilm();
+  const markDirectScroll = () => { navigationJump = false; };
+  window.addEventListener('wheel', markDirectScroll, { passive: true, capture: true });
+  window.addEventListener('touchmove', markDirectScroll, { passive: true, capture: true });
+  window.addEventListener('keydown', event => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markDirectScroll();
+  }, { capture: true });
+  document.addEventListener('click', event => {
+    if (event.target instanceof Element && event.target.closest('a[href^="#"]')) navigationJump = true;
+  }, { capture: true });
   window.addEventListener('scroll', onScroll, { passive: true });
   const invalidatePortalLayout = () => { portalLayoutDirty = true; schedule(); };
   window.addEventListener('resize', invalidatePortalLayout);

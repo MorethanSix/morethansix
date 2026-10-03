@@ -20,11 +20,11 @@ if(production&&(label!=='after'||variant!=='normal'))throw new Error('本番は�
 
 const sha256=value=>createHash('sha256').update(value).digest('hex');
 const gitShow=async spec=>(await execFileAsync('git',['show','--format=',spec],{cwd:repo,maxBuffer:32*1024*1024})).stdout;
-const scriptSourceByLabel={before:await gitShow('2e1c41a:site.js'),after:await readFile(`${repo}/site.js`,'utf8')};
-const indexByLabel={before:await gitShow('2e1c41a:index.html'),after:await readFile(`${repo}/index.html`,'utf8')};
+const scriptSourceByLabel={before:await gitShow('1fce4cf:site.js'),after:await readFile(`${repo}/site.js`,'utf8')};
+const indexByLabel={before:await gitShow('1fce4cf:index.html'),after:await readFile(`${repo}/index.html`,'utf8')};
 const expected={
-  before:{commit:'2e1c41a',script:'site.js?v=20261002-hero7',sha256:'5cae5a370302b2387ab16790dddac13a891db7e39dfbaccfe0d64aa6bb54a1e6'},
-  after:{commit:'working-tree hero9',script:'site.js?v=20261003-hero9',sha256:'38868241fd9a54ea6d0ca61ba58215b9895a6c9853b57077be04e2267384e8a7'},
+  before:{commit:'1fce4cf',script:'site.js?v=20261003-hero9',sha256:'38868241fd9a54ea6d0ca61ba58215b9895a6c9853b57077be04e2267384e8a7'},
+  after:{commit:'working-tree hero10',script:'site.js?v=20261003-hero10',sha256:'81b97b50a2fa556b91a479d98a245526b1050a2d1b6e1fa703de214bfbcb1c30'},
 }[label];
 const scriptSource=scriptSourceByLabel[label];
 const indexSource=indexByLabel[label];
@@ -36,18 +36,16 @@ const composeCount=scriptSource.split(composeCall).length-1;
 const servedScript=variant==='without-compose'
   ? (()=>{assert.equal(composeCount,1,'変異対象のcompose呼出しが一意ではありません');return scriptSource.replace(composeCall,'/* cadence mutation: compose omitted */');})()
   : scriptSource;
-const out=`/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-cadence/v4/${engine}-${label}-${variant}${production?'-production':''}/`;
+const out=`/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-cadence/v5/${engine}-${label}-${variant}${production?'-production':''}/`;
 await mkdir(out,{recursive:true});
 
-// この測定値は既存screenTrackの画面矩形測定を独立した検証コードで適用するもの。
-// 元映像のPC画面を画素認識しているわけではなく、screenTrack自体の正しさは別の目視・画素検証が必要。
-const screenTrack=[
-  {time:0,x:930,y:480,width:210,height:121},{time:1,x:880,y:445,width:264,height:145},
-  {time:2,x:784,y:377,width:370,height:207},{time:3,x:592,y:263,width:601,height:339},
-  {time:3.5,x:399,y:167,width:852,height:473},
-  {time:3.75,x:263,y:104,width:985,height:566},{time:3.791667,x:240,y:94,width:1028,height:590},
-  {time:3.833333,x:190,y:72,width:1075,height:617},{time:4,x:49,y:9,width:1328,height:755},
-];
+// 別工程で青い表示面を実画素から検出した88コマ。画面外の尾端は検証対象外。
+const measurements=JSON.parse(await readFile(`${repo}/_checks/hero-screen-measurements.json`,'utf8'));
+assert.equal(sha256(await readFile(`${repo}/assets/${measurements.video}`)),measurements.videoSha256,'測定に用いた動画のSHA');
+const measuredScreens=measurements.frames;
+assert.equal(measuredScreens.length,88);
+measuredScreens.forEach((frame,index)=>assert.equal(frame.frame,index));
+const geometryModel='blue-screen pixel measurements, frames 0-87; clipped tail excluded';
 const percentile=(values,q)=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.floor(sorted.length*q))];};
 const median=values=>percentile(values,.5);
 const relativeError=(frames,reference)=>{
@@ -74,21 +72,8 @@ for(const width of [1440,390]){
     }
     return route.continue();
   });
-  await page.addInitScript(track=>{
-    const clamp=(value,min=0,max=1)=>Math.max(min,Math.min(max,value));
-    const screenAt=time=>{
-      const index=Math.max(0,track.findIndex((point,i)=>i===track.length-1||time<=track[i+1].time));
-      const a=track[index],b=track[Math.min(index+1,track.length-1)];
-      if(a===b)return a;
-      const u=clamp((time-a.time)/(b.time-a.time));
-      const before=track[Math.max(0,index-1)],after=track[Math.min(track.length-1,index+2)],duration=b.time-a.time,result={time};
-      for(const key of ['x','y','width','height']){
-        const slopeA=(b[key]-before[key])/(b.time-before.time),slopeB=(after[key]-a[key])/(after.time-a.time);
-        result[key]=(2*u**3-3*u**2+1)*a[key]+(u**3-2*u**2+u)*duration*slopeA+(-2*u**3+3*u**2)*b[key]+(u**3-u**2)*duration*slopeB;
-      }
-      return result;
-    };
-    window.__cadence={frames:[],paints:[],seeks:[],model:'screenTrack geometry; not raw-video pixel recognition'};
+  await page.addInitScript(({measured,model})=>{
+    window.__cadence={frames:[],paints:[],seeks:[],model};
     const draw=CanvasRenderingContext2D.prototype.drawImage;
     const time=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'currentTime');
     const frameTimes=new WeakMap();
@@ -107,7 +92,10 @@ for(const width of [1440,390]){
       if(!surface||!preview||!text||!video.videoWidth||!surface.width)return null;
       const transform=new DOMMatrixReadOnly(getComputedStyle(surface).transform);
       if(Math.abs(transform.b)>.0001||Math.abs(transform.c)>.0001)return {invalidTransform:true};
-      const box=surface.getBoundingClientRect(),screen=screenAt(paintedTime),pad=(surface.width-video.videoWidth)/2;
+      // 実画素から別工程で測った表示面を使用。画面外で全幅を測れない尾端は除外する。
+      const screen=measured[Math.floor(paintedTime*24+.0001)];
+      if(!screen)return null;
+      const box=surface.getBoundingClientRect(),pad=(surface.width-video.videoWidth)/2;
       const sourceX=pad+screen.x*video.videoWidth/1280,sourceY=pad+screen.y*video.videoHeight/720;
       const sourceWidth=screen.width*video.videoWidth/1280,sourceHeight=screen.height*video.videoHeight/720;
       const displayed={left:box.left+sourceX/surface.width*box.width,top:box.top+sourceY/surface.height*box.height,width:sourceWidth/surface.width*box.width,height:sourceHeight/surface.height*box.height};
@@ -129,8 +117,8 @@ for(const width of [1440,390]){
       }
       return value;
     };
-  },screenTrack);
-  const result={width,checks:[],metrics:{},version:{...expected,variant,servedSha256:sha256(servedScript),geometryModel:'screenTrack geometry; not raw-video pixel recognition'}};
+  },{measured:measuredScreens,model:geometryModel});
+  const result={width,checks:[],metrics:{},version:{...expected,variant,servedSha256:sha256(servedScript),geometryModel}};
   const check=(name,fn)=>{try{fn();result.checks.push({name,pass:true});}catch(error){result.checks.push({name,pass:false,error:error.message});}};
   try{
     await page.goto(base);
@@ -188,6 +176,6 @@ for(const width of [1440,390]){
   await context.close();
 }
 await browser.close();
-await writeFile(out+'metadata.json',JSON.stringify({base,production,expected,variant,sourceSha256:sha256(scriptSource),servedSha256:sha256(servedScript),indexSha256:sha256(indexSource),geometryModel:'screenTrack geometry; not raw-video pixel recognition'},null,2));
+await writeFile(out+'metadata.json',JSON.stringify({base,production,expected,variant,sourceSha256:sha256(scriptSource),servedSha256:sha256(servedScript),indexSha256:sha256(indexSource),geometryModel},null,2));
 await writeFile(out+'results.json',JSON.stringify(results,null,2));
 process.exitCode=results.some(result=>result.checks.some(check=>!check.pass))?1:0;
