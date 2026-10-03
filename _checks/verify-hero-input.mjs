@@ -9,12 +9,16 @@ const label=process.argv[3]||'baseline';
 const fast=process.argv[4]==='fast';
 const baseline=process.argv[5]==='baseline';
 const width=Number(process.argv[6]||1440);
+const base=process.argv[7]||'http://127.0.0.1:8768/';
+assert.ok(['http://127.0.0.1:8768/','https://morethansix.jp/'].includes(base));
+const production=base.startsWith('https:');
+assert.ok(!production||!baseline,'公開検査では応答を差し替えない');
 assert.ok([1440,390].includes(width));
 const height=width===390?844:900;
 assert.ok(['chromium','webkit'].includes(engine));
 assert.match(label,/^[a-z0-9-]+$/);
 const require=createRequire('/Users/ym./.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/package.json');
-const out=`/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-jitter-20261003/${label}-${engine}${fast?'-fast':''}${width===390?'-390':''}`;
+const out=`/Users/ym./outputs/mts-homepage-20260919/proof-orbit-preview-2026-10-02-v1/evidence/hero-jitter-20261003/${label}-${engine}${fast?'-fast':''}${width===390?'-390':''}${production?'-production':''}`;
 await mkdir(out,{recursive:true});
 const browser=await require('playwright')[engine].launch(engine==='chromium'?{channel:'chrome',headless:true}:{headless:true});
 const context=await browser.newContext({viewport:{width,height},deviceScaleFactor:width===390?3:2,isMobile:width===390,hasTouch:width===390,recordVideo:{dir:out,size:{width,height}}});
@@ -44,7 +48,7 @@ await page.addInitScript(()=>{
   requestAnimationFrame(sample);
 });
 try{
-  await page.goto('http://127.0.0.1:8768/');
+  await page.goto(base);
   const sha=value=>createHash('sha256').update(value).digest('hex');
   const loaded=await page.evaluate(async()=>{
     const src=document.querySelector('script[src^="site.js?"]').getAttribute('src');
@@ -90,7 +94,7 @@ try{
   await page.evaluate(()=>{location.hash='#home';});
   await page.waitForFunction(()=>{const v=document.querySelector('.opening-film');return scrollY===0&&v.currentTime<.01&&!v.seeking;},null,{timeout:5000});
   metrics.hashReturn=true;
-  await writeFile(out+'/samples.json',JSON.stringify({start,inputs,frames,display,metrics,errors,baseline,script:loaded.src,sha256:sha(source)},null,2));
+  await writeFile(out+'/samples.json',JSON.stringify({base,start,inputs,frames,display,metrics,errors,baseline,script:loaded.src,sha256:sha(source)},null,2));
   console.log(JSON.stringify({out,metrics,errors}));
   assert.deepEqual(errors,[]);
   assert.ok(display.length>50&&frames.length>100,'連続した描画サンプルを取得');
