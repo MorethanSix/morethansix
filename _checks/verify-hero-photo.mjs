@@ -13,10 +13,10 @@ for(const [name,engine,opts] of [['chrome',chromium,{channel:'chrome'}],['webkit
  const browser=await engine.launch({headless:true,...opts});
  try{for(const viewport of [{width:1280,height:850},{width:390,height:844}]){
   const page=await browser.newPage({viewport,deviceScaleFactor:2});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(base);await page.waitForSelector('html.photo-ready');await page.evaluate(()=>document.fonts.ready);
+  await page.goto(base);await page.waitForSelector('html.photo-ready');await page.waitForSelector('.proof-orbit.is-orbit-moving');await page.evaluate(()=>document.fonts.ready);
   let previous=0;const states=[];
   for(const p of [0,.25,.4,.55,.7,.85,.94,1]){
-   await page.evaluate(p=>scrollTo({top:innerHeight*2.4*p,behavior:'instant'}),p);
+   await page.evaluate(p=>{const o=document.querySelector('.opening'),s=document.querySelector('.opening-stage');scrollTo({top:scrollY+o.getBoundingClientRect().top-document.querySelector('.header').offsetHeight+(o.getBoundingClientRect().height-s.getBoundingClientRect().height)*p,behavior:'instant'});},p);
    await page.waitForFunction(p=>Math.abs(Number(document.querySelector('.opening').dataset.photoProgress)-p)<.0006,p,{timeout:5000}).catch(async e=>{console.log(JSON.stringify({name,viewport,p,actual:await page.evaluate(()=>({y:scrollY,top:document.querySelector('.opening').offsetTop,head:document.querySelector('.header').getBoundingClientRect().height,p:document.querySelector('.opening').dataset.photoProgress,classes:document.documentElement.className}))}));throw e;});
    const state=await page.evaluate(()=>{
     const front=document.querySelector('.photo-front'),room=document.querySelector('.opening-room').getBoundingClientRect(),portal=document.querySelector('.opening-preview').getBoundingClientRect();

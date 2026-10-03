@@ -11,15 +11,16 @@
  const screen={x:1240,y:661,w:277,h:157}, center={x:1378.5,y:739.5};
  let paused=false, ready=false, failed=false, frame=0, displayed=0, last=0, metrics=null;
  const moving=()=>ready&&!failed&&!paused&&!reduced.matches;
- const progress=()=>clamp((scrollY-opening.offsetTop+metrics.head)/metrics.travel);
+ const progress=()=>clamp((scrollY-metrics.start)/metrics.travel);
  function measure(){
   const box=stage.getBoundingClientRect(), head=document.querySelector('.header').getBoundingClientRect().height;
-  const w=box.width,h=innerHeight-head;
+  const w=box.width,h=box.height;
   const endScale=Math.max(w/screen.w,h/screen.h)*1.035;
   const endX=(w-screen.w*endScale)/2,endY=(h-screen.h*endScale)/2;
   const portalScale=screen.w*endScale/1000;
   const top=consultation.getBoundingClientRect().top;
-  metrics={w,h,head,travel:innerHeight*2.4,endScale,endX,endY,portalScale};
+  // svh と可変ブラウザバーの innerHeight を混ぜず、実際の sticky 区間を測る。
+  metrics={w,h,head,start:opening.getBoundingClientRect().top+scrollY-head,travel:Math.max(1,opening.getBoundingClientRect().height-h),endScale,endX,endY,portalScale};
   const place=(el,rect)=>{el.style.left=`${(rect.left-box.left-endX)/portalScale}px`;el.style.top=`${(rect.top-top-endY)/portalScale}px`;el.style.width=`${rect.width/portalScale}px`;};
   for(const {screen:el,real} of text){const rect=real.getBoundingClientRect(),style=getComputedStyle(real);place(el,rect);el.style.boxSizing='border-box';el.style.height=`${rect.height/portalScale}px`;el.style.width=`${rect.width/portalScale+0.2}px`;el.style.fontSize=`${parseFloat(style.fontSize)/portalScale}px`;el.style.lineHeight=`${parseFloat(style.lineHeight)/portalScale}px`;el.style.letterSpacing=`${(parseFloat(style.letterSpacing)||0)/portalScale}px`;el.style.fontWeight=style.fontWeight;for(const side of ['Top','Right','Bottom','Left'])el.style[`padding${side}`]=`${parseFloat(style[`padding${side}`])/portalScale}px`;}
   const realPhoto=consultation.querySelector('.consult-photo img');place(photo,realPhoto.getBoundingClientRect());photo.style.height=`${realPhoto.getBoundingClientRect().height/portalScale}px`;
@@ -69,16 +70,26 @@
  }
  function schedule(){if(moving()&&!frame&&!document.hidden){last=0;frame=requestAnimationFrame(draw);}}
  function sync(){
-  const anchor=[...document.querySelectorAll('main > section')].find(el=>el.getBoundingClientRect().bottom>document.querySelector('.header').getBoundingClientRect().height+32);
+  const head=document.querySelector('.header').getBoundingClientRect().height;
+  let anchor=[...document.querySelectorAll('main > section')].find(el=>el.getBoundingClientRect().bottom>head+32);
+  let inJourney=false;
+  if(anchor?.id==='proof'){
+   const journey=anchor.querySelector('.orbit-journey');
+   const journeyBox=journey?.getBoundingClientRect(), beforeBody=!!journeyBox&&journeyBox.bottom>head+32;
+   inJourney=beforeBody&&journeyBox.top<=head+32;
+   anchor=beforeBody?journey:[...anchor.querySelectorAll('.orbit-intro,.proof-fact,.proof__note')].find(el=>el.getBoundingClientRect().bottom>head+32)||anchor;
+  }
   const oldTop=anchor?.getBoundingClientRect().top;
   const active=moving();root.classList.toggle('cinematic',ready);root.classList.toggle('photo-ready',ready);root.classList.toggle('motion-paused',!active);root.classList.toggle('motion-user-paused',paused||reduced.matches);
   if(frame)cancelAnimationFrame(frame);frame=0;
   if(!active){room.removeAttribute('style');opening.querySelector('.opening-copy').inert=false;opening.querySelector('.opening-services').inert=false;opening.querySelector('.scroll-hint').inert=false;stage.style.pointerEvents='';}
+  // 実績の輪も高さを変更するため、全章のモード変更後に読書位置を戻す。
+  document.dispatchEvent(new Event('mts:motionchange'));
   measure();
-  if(anchor&&anchor!==opening)scrollBy({top:anchor.getBoundingClientRect().top-oldTop,behavior:'instant'});
+  if(inJourney)scrollBy({top:anchor.getBoundingClientRect().top-metrics.head,behavior:'instant'});
+  else if(anchor&&anchor!==opening)scrollBy({top:anchor.getBoundingClientRect().top-oldTop,behavior:'instant'});
   else if(!active&&displayed>.3)scrollTo({top:consultation.offsetTop-metrics.head,behavior:'instant'});
   button.hidden=failed||reduced.matches;button.setAttribute('aria-pressed',String(paused));button.querySelector('[data-motion-label]').textContent=active?'動きを止める':'動きを再開';
-  document.dispatchEvent(new Event('mts:motionchange'));
   if(active){displayed=progress();paint(displayed);schedule();}
  }
  button.addEventListener('click',()=>{paused=!paused;sync();});reduced.addEventListener('change',sync);
@@ -87,5 +98,10 @@
  addEventListener('pageshow',()=>{measure();schedule();});
  document.fonts.ready.then(()=>{measure();schedule();});
  measure();
+ const reveals=document.querySelectorAll('.poss-stage,.proof-reveal');
+ if('IntersectionObserver' in window){
+  const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('is-in');observer.unobserve(entry.target);}}),{rootMargin:'0px 0px -12% 0px',threshold:.2});
+  reveals.forEach(element=>observer.observe(element));
+ }else reveals.forEach(element=>element.classList.add('is-in'));
  Promise.all([back.decode(),front.querySelector('img').decode()]).then(()=>{ready=true;sync();}).catch(()=>{failed=true;root.classList.add('photo-unavailable');sync();});
 })();
