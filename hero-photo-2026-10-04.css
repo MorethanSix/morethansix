@@ -1,0 +1,12 @@
+/* 実写素材のローカル比較。既存の配色・組版・実績の輪は保持する。 */
+.opening-room .opening-poster{object-fit:fill!important;max-width:none;transform-origin:0 0;will-change:transform;inset:auto!important}
+.photo-front{position:absolute;left:0;top:0;width:1586px;height:992px;transform-origin:0 0;will-change:transform;pointer-events:none}
+.opening-room .photo-front img{position:absolute;left:1200px;top:640px;width:345px;height:250px;max-width:none;object-fit:fill}
+.cinematic .opening-room{transform:none!important;will-change:auto;opacity:calc(1 - var(--handoff,0))}
+.cinematic .opening-preview{z-index:3;contain:layout style;backface-visibility:hidden}
+.motion[hidden]{display:none!important}
+.cinematic .opening{height:calc(100svh - var(--head) + 240svh)}
+.photo-ready:not(.motion-paused) .opening-stage{min-height:0}
+.motion-paused .photo-front,html:not(.photo-ready) .photo-front{display:none}
+.motion-paused .opening-room .opening-poster,html:not(.photo-ready) .opening-room .opening-poster{width:100%!important;height:100%!important;transform:none!important;object-fit:cover!important;object-position:85% 65%}
+.photo-unavailable .opening-preview{display:none!important}
