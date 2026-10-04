@@ -52,7 +52,9 @@
   preview.style.height=`${screen.h/screen.w*1000}px`;preview.style.visibility='visible';
   const paper=smooth(ramp(z,.77,1)), start=smooth(ramp(p,.19,.30));
   opening.style.setProperty('--handoff',smooth(ramp(p,.94,1)));
-  const values={'--open':expansion,'--next':smooth(ramp(p,.19,.28)),'--logo-fade':smooth(ramp(z,.10,.29)),'--zoom-hide':smooth(ramp(z,0,.25)),'--screen-ink':start*mix(.10,1,smooth(ramp(z,0,.72))),'--screen-photo-ink':start*mix(mix(.04,.5,smooth(ramp(z,.45,.8))),1,paper),'--screen-photo-contrast':mix(.4,1,paper),'--screen-photo-saturation':mix(.2,1,paper),'--portal-white':paper,'--preview-fade':Number(p>=.9999)};
+  // 参考1の濃さ約80%、参考2の約50%を経て消す。両区間の境界も滑らかにつなぐ。
+  const logoFade=.5*smooth(ramp(p,.36,.50))+.5*smooth(ramp(p,.50,.684));
+  const values={'--open':expansion,'--next':smooth(ramp(p,.19,.28)),'--logo-fade':logoFade,'--zoom-hide':smooth(ramp(z,0,.25)),'--screen-ink':start*mix(.10,1,smooth(ramp(z,0,.72))),'--screen-photo-ink':start*mix(mix(.04,.5,smooth(ramp(z,.45,.8))),1,paper),'--screen-photo-contrast':mix(.4,1,paper),'--screen-photo-saturation':mix(.2,1,paper),'--portal-white':paper,'--preview-fade':Number(p>=.9999)};
   for(const [key,value] of Object.entries(values)) opening.style.setProperty(key,value);
   root.style.setProperty('--text-reveal',Number(p>=.9999));root.style.setProperty('--bottom-reveal',Number(p>=.9999));
   stage.style.pointerEvents=p>=.9999?'none':'';
