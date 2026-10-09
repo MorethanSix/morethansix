@@ -52,7 +52,8 @@
 
   const moving = () => !reduced.matches && !root.classList.contains('motion-user-paused');
   const deactivate = () => {
-    root.classList.remove('consultation-motion-ready');
+    // 手動停止では旅程の寸法を保ち、同じ写真位置のまま停止・再開する。
+    if (!ready || reduced.matches) root.classList.remove('consultation-motion-ready');
     section.style.removeProperty('--consult-ecru');
     section.style.removeProperty('--consult-bridge');
     section.style.removeProperty('--consult-video-opacity');
@@ -86,8 +87,8 @@
   const sourceCadenceLength=cadence[cadence.length-1][0];
   const introHold = () => window.innerHeight * .65;
   const measureCadence=()=>{
-    chapter.style.setProperty('--consult-slow-extra','0px');
     if(!ready||!moving())return;
+    chapter.style.setProperty('--consult-slow-extra','0px');
     const travel=Math.max(1,chapter.offsetHeight-section.offsetHeight);
     chapter.style.setProperty('--consult-slow-extra',`${travel*(cadenceLength-1)+introHold()}px`);
   };

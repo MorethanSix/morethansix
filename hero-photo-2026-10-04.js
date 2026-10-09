@@ -69,7 +69,8 @@
   preview.style.height=`${screen.h/screen.w*1000}px`;preview.style.visibility='visible';
   const paper=smooth(ramp(z,.77,1)), start=smooth(ramp(p,.19,.30));
   opening.style.setProperty('--handoff',smooth(ramp(p,.94,1)));
-  const handoff=smooth(ramp(p,.98,1));
+  // 両レイヤーの位置が一致する終端で一度だけ切り替え、二重表示を避ける。
+  const handoff=Number(p>=.9999);
   const values={'--open':expansion,'--next':smooth(ramp(p,.19,.28)),'--logo-fade':smooth(ramp(z,.10,.29)),'--zoom-hide':smooth(ramp(z,0,.25)),'--screen-ink':start*mix(.10,1,smooth(ramp(z,0,.72))),'--screen-photo-ink':start*mix(mix(.04,.5,smooth(ramp(z,.45,.8))),1,paper),'--screen-photo-contrast':mix(.4,1,paper),'--screen-photo-saturation':mix(.2,1,paper),'--portal-white':paper,'--preview-fade':handoff};
   for(const [key,value] of Object.entries(values)) opening.style.setProperty(key,value);
   root.style.setProperty('--text-reveal',handoff);root.style.setProperty('--bottom-reveal',handoff);
@@ -100,17 +101,23 @@
    anchor=beforeBody?journey:[...anchor.querySelectorAll('.orbit-intro,.proof-fact,.proof__note')].find(el=>el.getBoundingClientRect().bottom>head+32)||anchor;
   }
   const oldTop=anchor?.getBoundingClientRect().top;
-  const active=moving();root.classList.toggle('cinematic',ready);root.classList.toggle('photo-ready',ready);root.classList.toggle('motion-paused',!active);root.classList.toggle('motion-user-paused',paused||reduced.matches);
+  const active=moving(), wasActive=root.classList.contains('photo-ready')&&!root.classList.contains('motion-paused');
+  const resumeConsultation=root.classList.contains('photo-ready')&&!wasActive&&active&&anchor===consultation;
+  const consultationOffset=resumeConsultation?scrollY-consultation.offsetTop:null;
+  root.classList.toggle('cinematic',ready);root.classList.toggle('photo-ready',ready);root.classList.toggle('motion-paused',!active);root.classList.toggle('motion-user-paused',paused||reduced.matches);
   if(frame)cancelAnimationFrame(frame);frame=0;
   if(!active){room.removeAttribute('style');opening.querySelector('.opening-copy').inert=false;opening.querySelector('.opening-services').inert=false;opening.querySelector('.scroll-hint').inert=false;stage.style.pointerEvents='';}
   // 実績の輪も高さを変更するため、全章のモード変更後に読書位置を戻す。
   document.dispatchEvent(new Event('mts:motionchange'));
   measure();
-  if(inJourney)scrollBy({top:anchor.getBoundingClientRect().top-metrics.head,behavior:'instant'});
+  // 再開時のヒーロー終端を先に確定し、その後に相談章の読書位置を戻す。
+  if(active&&anchor===consultation){displayed=1;paint(displayed);measure();}
+  if(resumeConsultation)scrollTo({top:consultation.offsetTop+consultationOffset,behavior:'instant'});
+  else if(inJourney)scrollBy({top:anchor.getBoundingClientRect().top-metrics.head,behavior:'instant'});
   else if(anchor&&anchor!==opening)scrollBy({top:anchor.getBoundingClientRect().top-oldTop,behavior:'instant'});
   else if(!active&&displayed>.3)scrollTo({top:consultation.offsetTop-metrics.head,behavior:'instant'});
   button.hidden=failed||reduced.matches;button.setAttribute('aria-pressed',String(paused));button.querySelector('[data-motion-label]').textContent=active?'動きを止める':'動きを再開';
-  if(active){displayed=progress();paint(displayed);schedule();}
+  if(active){displayed=resumeConsultation?1:progress();paint(displayed);if(resumeConsultation){const savedOffset=consultationOffset;requestAnimationFrame(()=>{scrollTo({top:consultation.offsetTop+savedOffset,behavior:'instant'});schedule();});}schedule();}
  }
  button.addEventListener('click',()=>{paused=!paused;sync();});reduced.addEventListener('change',sync);
  addEventListener('scroll',schedule,{passive:true});addEventListener('resize',()=>{measure();schedule();});
