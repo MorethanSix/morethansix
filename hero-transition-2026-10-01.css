@@ -1,12 +1,16 @@
 /* The filmed approach keeps the laptop rigid; HTML remains sharp and accessible. */
-.opening-room { --film-end-x: .8; --film-position: 80%; pointer-events: none; }
+.opening-room  {
+  --film-end-x: .8;
+  --film-position: 80%;
+  pointer-events: none;
+}
 /* 開始は左コピー＋右写真。写真を全面へ広げてからロゴとPC接近へ続く。 */
-.opening .opening-stage {
+.opening .opening-stage  {
   height: calc(100svh - var(--head));
   min-height: 800px;
   max-height: none;
 }
-.opening .opening-next {
+.opening .opening-next  {
   display: none;
   position: absolute;
   inset: 13% auto auto 10%;
@@ -15,10 +19,12 @@
   transform: none;
   pointer-events: none;
 }
-.opening .opening-next h1 { margin: 0; }
+.opening .opening-next h1  {
+  margin: 0;
+}
 .opening-room .opening-poster,
 .opening-room .opening-film,
-.opening-room .opening-film-surface {
+.opening-room .opening-film-surface  {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -27,12 +33,17 @@
   object-position: var(--film-position) 50%;
   pointer-events: none;
 }
-.opening-room .opening-film { opacity: 0; }
-.opening-room .opening-film-surface { opacity: 0; }
-.cinematic:not(.motion-paused) .opening-room.frame-painted .opening-film-surface { opacity: 1; }
+.opening-room .opening-film  {
+  opacity: 0;
+}
+.opening-room .opening-film-surface  {
+  opacity: 0;
+}
+.cinematic:not(.motion-paused) .opening-room.frame-painted .opening-film-surface  {
+  opacity: 1;
+}
 /* 最初の画像は裏側に残す。動画レイヤーの描画が遅れても白抜けさせない。 */
-
-.opening-preview {
+.opening-preview  {
   position: absolute;
   top: 0;
   left: 0;
@@ -47,22 +58,22 @@
   background: rgba(251, 250, 248, var(--portal-white, 0));
 }
 .opening-preview::before,
-.opening-preview::after {
+.opening-preview::after  {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   opacity: var(--glass, 1);
 }
-.opening-preview::before {
+.opening-preview::before  {
   z-index: 1;
   background: none;
 }
-.opening-preview::after {
+.opening-preview::after  {
   z-index: 3;
   background: none;
 }
-.opening-screen-card {
+.opening-screen-card  {
   position: relative;
   z-index: 2;
   width: 100%;
@@ -73,23 +84,28 @@
 .opening-screen-card .screen-kicker,
 .opening-screen-card .screen-with,
 .opening-screen-card .screen-detail,
-.opening-screen-card strong { position: absolute; display: block; }
-.opening-screen-card .screen-kicker {
+.opening-screen-card strong  {
+  position: absolute;
+  display: block;
+}
+.opening-screen-card .screen-kicker  {
   top: 78px;
   left: 65px;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: .12em;
 }
-.opening-screen-card .screen-with {
+.opening-screen-card .screen-with  {
   top: 78px;
   left: 865px;
   font-size: 11px;
   letter-spacing: .2em;
 }
 .opening-screen-card .screen-kicker,
-.opening-screen-card .screen-with { white-space: nowrap; }
-.opening-screen-card strong {
+.opening-screen-card .screen-with  {
+  white-space: nowrap;
+}
+.opening-screen-card strong  {
   top: 169px;
   left: 65px;
   font-size: 58px;
@@ -97,13 +113,13 @@
   line-height: 1.2;
   letter-spacing: -.065em;
 }
-.opening-screen-card .screen-detail {
+.opening-screen-card .screen-detail  {
   top: 350px;
   left: 65px;
   font-size: 19px;
   line-height: 2.1;
 }
-.opening-preview .screen-photo {
+.opening-preview .screen-photo  {
   position: absolute;
   z-index: 1;
   max-width: none;
@@ -111,98 +127,130 @@
   opacity: var(--screen-photo-ink, 0);
   filter: saturate(var(--screen-photo-saturation, 1)) contrast(var(--screen-photo-contrast, 1));
 }
-
-.cinematic .opening { height: calc(100svh - var(--head) + (150svh + var(--head)) * var(--travel-share, 1)); }
-.cinematic .opening-stage {
+.cinematic .opening-stage  {
   z-index: 1;
   background: rgba(251, 250, 248, calc(1 - var(--handoff, 0)));
 }
-.cinematic:not(.motion-paused) .opening-stage { min-height: 0; }
-.cinematic .opening-room {
+.cinematic:not(.motion-paused) .opening-stage  {
+  min-height: 0;
+}
+.cinematic .opening-room  {
   transform-origin: 100% 50%;
   opacity: calc(1 - var(--handoff, 0));
   will-change: left, top, width, height, transform;
 }
-.cinematic .opening-room::after { display: none; }
-.cinematic .opening-preview {
+.cinematic .opening-room::after  {
+  display: none;
+}
+.cinematic .opening-preview  {
   display: block;
   opacity: calc(1 - var(--preview-fade, 0));
   will-change: transform;
 }
-.cinematic .opening-next {
+.cinematic .opening-next  {
   display: block;
   opacity: calc(var(--next, 0) * (1 - var(--logo-fade, 0)));
 }
 .cinematic .opening-index,
-.cinematic .scroll-hint { opacity: calc(1 - var(--zoom-hide, 0)); }
-.cinematic main > .consultation {
+.cinematic .scroll-hint  {
+  opacity: calc(1 - var(--zoom-hide, 0));
+}
+.cinematic main > .consultation  {
   position: relative;
   z-index: 0;
   margin-top: calc(-100svh + var(--head));
 }
-.cinematic main > .consultation .mv-up {
+.cinematic main > .consultation .mv-up  {
   opacity: 1 !important;
   transform: none !important;
   transition: none !important;
 }
 .cinematic main > .consultation .section-top,
-.cinematic main > .consultation .consult-heading {
+.cinematic main > .consultation .consult-heading  {
   opacity: var(--text-reveal, 0) !important;
 }
-.cinematic main > .consultation .consult-bottom {
+.cinematic main > .consultation .consult-bottom  {
   opacity: var(--bottom-reveal, 0) !important;
 }
-.cinematic main > .consultation .mv-mask::after { display: none; }
-.cinematic main > .consultation .mv-mask img { transform: none !important; }
-
-.cinematic.motion-paused .opening { height: auto; }
-.cinematic.motion-paused .opening-stage {
+.cinematic main > .consultation .mv-mask::after  {
+  display: none;
+}
+.cinematic main > .consultation .mv-mask img  {
+  transform: none !important;
+}
+.cinematic.motion-paused .opening  {
+  height: auto;
+}
+.cinematic.motion-paused .opening-stage  {
   position: relative;
   top: 0;
   min-height: 800px;
   height: calc(100svh - var(--head));
   background: var(--paper);
 }
-.cinematic.motion-paused .opening-room {
+.cinematic.motion-paused .opening-room  {
   opacity: 1;
   transform: none !important;
 }
-.cinematic.motion-paused .opening-next { display: none; }
-.cinematic.motion-paused .opening-preview { display: none; }
+.cinematic.motion-paused .opening-next  {
+  display: none;
+}
+.cinematic.motion-paused .opening-preview  {
+  display: none;
+}
 .cinematic.motion-paused .opening-index,
-.cinematic.motion-paused .scroll-hint { opacity: 1; }
-.cinematic.motion-paused main > .consultation { margin-top: 0; opacity: 1; }
+.cinematic.motion-paused .scroll-hint  {
+  opacity: 1;
+}
+.cinematic.motion-paused main > .consultation  {
+  margin-top: 0;
+  opacity: 1;
+}
 .cinematic.motion-paused main > .consultation .section-top,
 .cinematic.motion-paused main > .consultation .consult-heading,
-.cinematic.motion-paused main > .consultation .consult-bottom { opacity: 1 !important; }
-
-@media (max-width: 760px) {
+.cinematic.motion-paused main > .consultation .consult-bottom  {
+  opacity: 1 !important;
+}
+@media (max-width: 760px)  {
   html:not(.cinematic) .opening-stage,
-  .cinematic.motion-paused .opening-stage { min-height: 830px; }
-  .opening-room { --film-end-x: .9; --film-position: 90%; }
+  .cinematic.motion-paused .opening-stage  {
+    min-height: 830px;
+  }
+  .opening-room  {
+    --film-end-x: .9;
+    --film-position: 90%;
+  }
   /* 読込前・映像準備後・停止中で写真の初期位置を変えない。 */
-  .opening .opening-room { top: 47%; height: 39%; }
-  .cinematic .opening .opening-room {
+  .opening .opening-room  {
+    top: 47%;
+    height: 39%;
+  }
+  .cinematic .opening .opening-room  {
     top: calc(47% - var(--open, 0) * 47%);
     height: calc(39% + var(--open, 0) * 61%);
   }
-  .cinematic.motion-paused .opening .opening-room { top: 47%; height: 39%; }
-  .opening .opening-next {
+  .cinematic.motion-paused .opening .opening-room  {
+    top: 47%;
+    height: 39%;
+  }
+  .opening .opening-next  {
     color: #fff;
     text-shadow: 0 2px 7px rgba(9, 43, 79, .45);
   }
-  .opening .opening-next .opening-logo {
+  .opening .opening-next .opening-logo  {
     filter: brightness(0) invert(1) drop-shadow(0 2px 7px rgba(9, 43, 79, .35));
   }
 }
-
-@media (min-width: 501px) and (max-width: 760px) {
-  .opening-room { --film-end-x: .84; --film-position: 84%; }
-  .opening .opening-next {
+@media (min-width: 501px) and (max-width: 760px)  {
+  .opening-room  {
+    --film-end-x: .84;
+    --film-position: 84%;
+  }
+  .opening .opening-next  {
     color: var(--navy);
     text-shadow: 0 1px 3px rgba(255, 255, 255, .55);
   }
-  .opening .opening-next .opening-logo {
+  .opening .opening-next .opening-logo  {
     filter: drop-shadow(0 1px 3px rgba(255, 255, 255, .55));
   }
 }
